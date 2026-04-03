@@ -1,6 +1,6 @@
 ---
 title: MediAssist Triage Arena
-emoji: "🏥"
+emoji: "??"
 colorFrom: blue
 colorTo: green
 sdk: gradio
