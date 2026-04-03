@@ -1,8 +1,8 @@
 ---
 title: MediAssist Triage Arena
-emoji: "hospital"
-colorFrom: teal
-colorTo: amber
+emoji: "🏥"
+colorFrom: blue
+colorTo: green
 sdk: gradio
 sdk_version: "6.10.0"
 python_version: "3.12"
