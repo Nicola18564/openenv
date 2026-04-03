@@ -38,11 +38,11 @@ The environment returns:
 - Explainable scoring with urgency, risk score, verdict, and rationale
 - Scenario-driven decisions for emergency, clinic, telemedicine, self-care, and doctor-visit cases
 - Benchmark mode for quick quantitative evaluation
-- Gradio interface for interactive clinical workflow review
+- Gradio interface for interactive triage demo
 - Scenario selector for switching between multiple patient cases
 - Step history and accumulated reward tracking during each episode
 - Triage quality status banner for clearer decision feedback
-- Exportable episode logs for review and submission screenshots
+- Exportable episode logs for review
 
 ## Run locally
 
@@ -145,4 +145,4 @@ In general:
 - No external APIs or cloud databases are required.
 - The interface runs from the repository and the deployed Hugging Face Space.
 - The OpenEnv entry must exactly match the class name in code: `medienv.environment:HealthTriageEnv`
-- `app.py` builds the Gradio UI, connects the `step` and `reset` controls, and launches the demo
+- `app.py` builds the Gradio UI, connects the `step` and `reset` controls, and launches the interface
