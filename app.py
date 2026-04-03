@@ -109,7 +109,7 @@ CSS = """
 
 def _history_markdown(history):
     if not history:
-        return "No actions yet. Start by collecting signals or making a triage decision."
+        return "No actions recorded yet."
     return "\n".join(f"{idx}. `{item}`" for idx, item in enumerate(history, start=1))
 
 
@@ -238,11 +238,31 @@ def _build_benchmark_html():
     """
 
 
+def _reward_detail(last_reward, current_state):
+    status = "Episode Complete" if current_state.get("done") else "Active"
+    total_reward = current_state.get("total_reward", 0)
+
+    if last_reward is None:
+        impact = "Awaiting first action"
+    elif last_reward >= 12:
+        impact = "Critical-safe decision"
+    elif last_reward >= 10:
+        impact = "Correct final disposition"
+    elif last_reward >= 3:
+        impact = "Useful information gathering"
+    elif last_reward >= 0:
+        impact = "Low-impact safe step"
+    elif last_reward <= -10:
+        impact = "Unsafe under-triage"
+    else:
+        impact = "Incorrect final recommendation"
+
+    return f"Step Reward: {last_reward if last_reward is not None else 0} | Total Reward: {total_reward} | Assessment: {impact} | Status: {status}"
+
+
 def _render(current_state, message, info=None):
     info = info or {}
-    reward_text = f"Total Reward: {current_state.get('total_reward', 0)}"
-    if current_state.get("done"):
-        reward_text += " | Episode Complete"
+    reward_text = _reward_detail(info.get("step_reward"), current_state)
     return (
         current_state,
         message,
@@ -260,13 +280,14 @@ def reset_env(case_choice):
     global state
     case_id = _extract_case_id(case_choice) if case_choice else None
     state = env.reset(case_id=case_id)
-    message = f"Loaded case {state['case_id']}. Judges can now test the triage agent."
+    message = f"Loaded case {state['case_id']}. Review the case summary and choose the next triage action."
     info = {
+        "step_reward": None,
         "recommended_path": [],
         "expert_action": env.expert_policy(state),
         "explanation": {
             "verdict": "ready",
-            "rationale": "Environment reset. Use guided actions to evaluate triage quality.",
+            "rationale": "Case initialized. Use the action selector to gather information or issue a care decision.",
             "assessment": {
                 "risk_score": state["risk_score"],
                 "urgency": state["urgency"],
@@ -285,10 +306,11 @@ def step_env(action):
 
     try:
         state, reward, done, info = env.step(action)
+        info["step_reward"] = reward
         if done:
-            message = f"Action accepted. Reward {reward}. Episode complete with total score {state['total_reward']}."
+            message = f"Action recorded. Step reward {reward}. Episode closed with total score {state['total_reward']}."
         else:
-            message = f"Action accepted. Reward {reward}. Continue investigating or route care."
+            message = f"Action recorded. Step reward {reward}. Continue triage or finalize the care route."
         return _render(state, message, info)
     except Exception as exc:
         return _render(state, f"Error: {exc}")
@@ -298,11 +320,11 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
     gr.HTML(
         """
         <div class="hero-card">
-          <p style="margin:0; letter-spacing:0.18em; text-transform:uppercase; color:#d97706; font-weight:700;">OpenEnv Hackathon Demo</p>
-          <h1 class="hero-title">MediAssist Triage Arena</h1>
+          <p style="margin:0; letter-spacing:0.18em; text-transform:uppercase; color:#d97706; font-weight:700;">Clinical Decision Environment</p>
+          <h1 class="hero-title">MediAssist Clinical Triage System</h1>
           <p class="hero-subtitle">
-            A clinically aware, equity-sensitive health triage environment with explainable scoring,
-            benchmark mode, and a polished judge-ready simulation interface.
+            An explainable triage environment with structured case routing, safety-aware scoring,
+            and equity-sensitive clinical decision support.
           </p>
         </div>
         """
@@ -325,20 +347,20 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
             case_selector = gr.Dropdown(
                 choices=_scenario_choices(),
                 value=_scenario_choices()[0],
-                label="Demo Case",
-                info="Choose a showcase scenario for judges.",
+                label="Clinical Case",
+                info="Select a patient scenario.",
             )
             action_input = gr.Dropdown(
                 choices=ACTION_CATALOG,
                 value="ASK_FOLLOWUP",
                 label="Triage Action",
-                info="Use structured actions to drive the environment.",
+                info="Choose the next structured clinical action.",
             )
             with gr.Row():
-                step_btn = gr.Button("Run Triage Step", variant="primary")
-                reset_btn = gr.Button("Load Case")
-            message_output = gr.Textbox(label="System Output", interactive=False, value="Ready for the demo.")
-            reward_output = gr.Textbox(label="Reward System", interactive=False, value=f"Total Reward: {state['total_reward']}")
+                step_btn = gr.Button("Step", variant="primary")
+                reset_btn = gr.Button("Reset Case")
+            message_output = gr.Textbox(label="System Output", interactive=False, value="System ready.")
+            reward_output = gr.Textbox(label="Reward Analysis", interactive=False, value=_reward_detail(None, state))
             history_output = gr.Markdown(value=_history_markdown(state.get("history", [])), label="Episode Timeline")
         with gr.Column(scale=8):
             explanation_html = gr.HTML(
