@@ -60,7 +60,6 @@ Benchmark mode reports:
 - average reward
 - successful triage rate
 - urgency breakdown across sampled cases
-- count of correct final decisions
 
 ## OpenEnv entry
 
@@ -88,7 +87,8 @@ The Gradio demo is designed to:
 
 - display the current observation clearly, including symptoms, severity, age group, and access constraints
 - allow the user to select a scenario
-- let the user take a `step` action or `reset` the environment
+- let the user choose an action and step through the episode
+- let the user reset for a new case
 - show reward, rationale, completion status, and decision history after each action
 
 ## How Scoring Works
@@ -104,7 +104,7 @@ The reward system is designed to encourage safe and appropriate triage decisions
 | `RECOMMEND_DOCTOR_VISIT` | moderate or high-risk cases | positive reward if appropriate |
 | `RECOMMEND_CLINIC` | access-sensitive or higher-risk cases | positive reward if appropriate |
 | `SCHEDULE_TELEMEDICINE` | moderate cases suitable for remote follow-up | positive reward if appropriate |
-| `ESCALATE_EMERGENCY` | severe or critical cases | highest reward when required, strong penalty if missed |
+| `ESCALATE_EMERGENCY` | severe or critical cases | highest positive reward when required, strong penalty if missed |
 
 In general:
 
