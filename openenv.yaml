@@ -1,0 +1,3 @@
+name: mediassist-triage-arena
+description: Explainable and equity-aware health triage simulation environment for OpenEnv demos.
+entry_point: medienv.environment:HealthTriageEnv
