@@ -49,6 +49,13 @@ pip install -r requirements.txt
 python app.py
 ```
 
+## Requirements
+
+- Python 3.12
+- Gradio
+- OpenEnv-compatible environment structure
+- No external API access required
+
 ## Baseline benchmark
 
 ```bash
@@ -91,9 +98,25 @@ The Gradio demo is designed to:
 - let the user reset for a new case
 - show reward, rationale, completion status, and decision history after each action
 
+## How to use the demo
+
+- select a scenario
+- read the case summary and current state
+- choose an action from the action list
+- click `step` to advance the episode
+- review the reward, rationale, and updated history
+- click `reset` to load another case
+
 ## How Scoring Works
 
 The reward system is designed to encourage safe and appropriate triage decisions.
+
+Reward interpretation:
+
+- small positive reward for information gathering
+- medium positive reward for correct non-emergency disposition
+- large positive reward for correct emergency escalation
+- negative reward for unsafe under-triage or incorrect final recommendations
 
 | Action | Good use case | Reward behavior |
 | --- | --- | --- |
