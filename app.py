@@ -1,4 +1,5 @@
 import gradio as gr
+import json
 
 from medienv.environment import HealthTriageEnv
 from medienv.tasks import ACTION_CATALOG, SCENARIOS
@@ -107,6 +108,19 @@ CSS = """
   font-size: 0.84rem;
   border: 1px solid rgba(11, 110, 105, 0.14);
   background: rgba(11, 110, 105, 0.08);
+}
+
+.quality-banner {
+  border-radius: 20px;
+  padding: 16px 18px;
+  border: 1px solid rgba(21, 37, 54, 0.08);
+  margin-bottom: 14px;
+}
+
+.quality-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 8px 0;
 }
 
 .danger {
@@ -301,6 +315,67 @@ def _reward_breakdown_html(last_reward, current_state, info=None):
     """
 
 
+def _quality_label(info, current_state):
+    verdict = info.get("explanation", {}).get("verdict", "ready")
+    done = current_state.get("done", False)
+
+    mapping = {
+        "ready": ("System Ready", "#eff6ff", "#1d4ed8"),
+        "optimal": ("High-Confidence Triage", "#ecfdf3", "#027a48"),
+        "reasonable": ("Safe Investigative Step", "#fffaeb", "#b54708"),
+        "partial": ("Partial Evidence", "#fff7ed", "#c2410c"),
+        "suboptimal": ("Needs Better Routing", "#fef3f2", "#b42318"),
+        "unsafe": ("Unsafe Under-Triage", "#fef2f2", "#b42318"),
+    }
+    label, bg, ink = mapping.get(verdict, ("System Ready", "#eff6ff", "#1d4ed8"))
+    if done and verdict == "optimal":
+        label = "Episode Closed Safely"
+    return label, bg, ink
+
+
+def _quality_banner_html(info, current_state):
+    label, bg, ink = _quality_label(info, current_state)
+    rationale = info.get("explanation", {}).get(
+        "rationale",
+        "Select an action to generate a triage quality assessment."
+    )
+    return f"""
+    <div class="quality-banner" style="background:{bg}; color:{ink};">
+      <p class="quality-title">{label}</p>
+      <p style="margin:0;">{rationale}</p>
+    </div>
+    """
+
+
+def _episode_log_text(current_state, info=None):
+    info = info or {}
+    payload = {
+        "case_id": current_state.get("case_id"),
+        "title": current_state.get("title"),
+        "urgency": current_state.get("urgency"),
+        "risk_score": current_state.get("risk_score"),
+        "total_reward": current_state.get("total_reward"),
+        "done": current_state.get("done"),
+        "history": current_state.get("history", []),
+        "expert_action": info.get("expert_action"),
+        "recommended_path": info.get("recommended_path", []),
+        "explanation": info.get("explanation", {}),
+    }
+    return json.dumps(payload, indent=2)
+
+
+def export_episode_log():
+    info = {
+        "expert_action": env.expert_policy(state),
+        "recommended_path": [],
+        "explanation": env.last_explanation or {
+            "verdict": "ready",
+            "rationale": "No completed action has been recorded yet.",
+        },
+    }
+    return _episode_log_text(state, info)
+
+
 def run_benchmark():
     benchmark_env = HealthTriageEnv(seed=21)
     report = benchmark_env.benchmark(episodes=50)
@@ -322,7 +397,9 @@ def _render(current_state, message, info=None):
         current_state,
         message,
         reward_text,
+        _quality_banner_html(info, current_state),
         _reward_breakdown_html(info.get("step_reward"), current_state, info),
+        _episode_log_text(current_state, info),
         _build_metrics_html(current_state),
         _build_case_brief_html(current_state),
         _build_equity_html(current_state),
@@ -418,9 +495,12 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
                 benchmark_btn = gr.Button("Run Benchmark")
             message_output = gr.Textbox(label="System Output", interactive=False, value="System ready.")
             reward_output = gr.Textbox(label="Reward Summary", interactive=False, value=_reward_detail(None, state))
+            log_output = gr.Code(label="Episode Log", value=_episode_log_text(state, {}), language="json")
+            export_btn = gr.Button("Export Episode Log")
             benchmark_output = gr.Textbox(label="Benchmark Output", interactive=False, value="Benchmark ready.")
             history_output = gr.Markdown(value=_history_markdown(state.get("history", [])), label="Episode Timeline")
         with gr.Column(scale=8):
+            quality_banner = gr.HTML(value=_quality_banner_html({}, state))
             reward_panel = gr.HTML(value=_reward_breakdown_html(None, state, {}))
             explanation_html = gr.HTML(
                 value=_build_explanation_html(
@@ -449,7 +529,9 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
             state_output,
             message_output,
             reward_output,
+            quality_banner,
             reward_panel,
+            log_output,
             metrics_html,
             case_brief_html,
             equity_html,
@@ -466,7 +548,9 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
             state_output,
             message_output,
             reward_output,
+            quality_banner,
             reward_panel,
+            log_output,
             metrics_html,
             case_brief_html,
             equity_html,
@@ -479,6 +563,11 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
     benchmark_btn.click(
         fn=run_benchmark,
         outputs=[benchmark_html, benchmark_output],
+    )
+
+    export_btn.click(
+        fn=export_episode_log,
+        outputs=log_output,
     )
 
 

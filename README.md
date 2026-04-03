@@ -41,6 +41,8 @@ The environment returns:
 - Gradio interface for interactive clinical workflow review
 - Scenario selector for switching between multiple patient cases
 - Step history and accumulated reward tracking during each episode
+- Triage quality status banner for clearer decision feedback
+- Exportable episode logs for review and submission screenshots
 
 ## Run locally
 
@@ -97,6 +99,8 @@ The Gradio interface is designed to:
 - let the user choose an action and step through the episode
 - let the user reset for a new case
 - show reward, rationale, completion status, and decision history after each action
+- show a triage quality label after each decision
+- allow episode log export from the interface
 
 ## How to use the interface
 
