@@ -10,22 +10,22 @@ state = env.reset(case_id=SCENARIOS[0]["id"])
 
 CSS = """
 :root {
-  --bg: #f6efe4;
-  --paper: rgba(255, 252, 247, 0.88);
-  --ink: #1f2937;
-  --muted: #6b7280;
-  --primary: #0f766e;
-  --accent: #d97706;
-  --danger: #b91c1c;
-  --border: rgba(15, 118, 110, 0.16);
-  --shadow: 0 18px 60px rgba(31, 41, 55, 0.12);
+  --bg: #f3efe7;
+  --paper: rgba(255, 253, 249, 0.92);
+  --ink: #152536;
+  --muted: #5f6f7f;
+  --primary: #0b6e69;
+  --accent: #c67a12;
+  --danger: #b42318;
+  --border: rgba(11, 110, 105, 0.14);
+  --shadow: 0 20px 70px rgba(21, 37, 54, 0.12);
 }
 
 .gradio-container {
   background:
-    radial-gradient(circle at top left, rgba(217, 119, 6, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.18), transparent 26%),
-    linear-gradient(135deg, #f7f1e7 0%, #eef6f5 100%);
+    radial-gradient(circle at top left, rgba(198, 122, 18, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(11, 110, 105, 0.17), transparent 26%),
+    linear-gradient(135deg, #f7f2ea 0%, #eef7f6 100%);
   color: var(--ink);
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
 }
@@ -43,16 +43,16 @@ CSS = """
 }
 
 .hero-title {
-  font-size: 2.2rem;
+  font-size: 2.35rem;
   line-height: 1.05;
   margin: 0;
-  color: #102a43;
+  color: #16324a;
 }
 
 .hero-subtitle {
   margin-top: 10px;
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 1.02rem;
 }
 
 .metric-grid {
@@ -92,6 +92,21 @@ CSS = """
   border-radius: 999px;
   padding: 7px 12px;
   font-size: 0.85rem;
+}
+
+.status-strip {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.status-pill {
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.84rem;
+  border: 1px solid rgba(11, 110, 105, 0.14);
+  background: rgba(11, 110, 105, 0.08);
 }
 
 .danger {
@@ -260,6 +275,46 @@ def _reward_detail(last_reward, current_state):
     return f"Step Reward: {last_reward if last_reward is not None else 0} | Total Reward: {total_reward} | Assessment: {impact} | Status: {status}"
 
 
+def _reward_breakdown_html(last_reward, current_state, info=None):
+    info = info or {}
+    explanation = info.get("explanation", {})
+    verdict = explanation.get("verdict", "ready").title()
+    score = current_state.get("risk_score", 0)
+    urgency = current_state.get("urgency", "-").title()
+    step_reward = 0 if last_reward is None else last_reward
+
+    return f"""
+    <div class="panel-card" style="padding:18px 20px;">
+      <h3 style="margin:0 0 10px 0; color:#16324a;">Reward Analysis</h3>
+      <div class="status-strip">
+        <span class="status-pill">Step Reward: {step_reward}</span>
+        <span class="status-pill">Total Reward: {current_state.get("total_reward", 0)}</span>
+        <span class="status-pill">Risk Score: {score}</span>
+        <span class="status-pill">Urgency: {urgency}</span>
+        <span class="status-pill">Verdict: {verdict}</span>
+      </div>
+      <p style="margin:14px 0 0 0; color:#475569;">
+        Score meaning: information gathering earns a small positive score, correct non-emergency routing earns a medium score,
+        correct emergency escalation earns the highest positive score, and unsafe under-triage receives a strong penalty.
+      </p>
+    </div>
+    """
+
+
+def run_benchmark():
+    benchmark_env = HealthTriageEnv(seed=21)
+    report = benchmark_env.benchmark(episodes=50)
+    breakdown = report["urgency_breakdown"]
+    summary = (
+        f"Episodes: {report['episodes']} | "
+        f"Average Reward: {report['average_reward']} | "
+        f"Success Rate: {report['successful_triage_rate']}% | "
+        f"Urgency Mix: critical {breakdown['critical']}, high {breakdown['high']}, "
+        f"moderate {breakdown['moderate']}, low {breakdown['low']}"
+    )
+    return _build_benchmark_html(), summary
+
+
 def _render(current_state, message, info=None):
     info = info or {}
     reward_text = _reward_detail(info.get("step_reward"), current_state)
@@ -267,6 +322,7 @@ def _render(current_state, message, info=None):
         current_state,
         message,
         reward_text,
+        _reward_breakdown_html(info.get("step_reward"), current_state, info),
         _build_metrics_html(current_state),
         _build_case_brief_html(current_state),
         _build_equity_html(current_state),
@@ -320,11 +376,11 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
     gr.HTML(
         """
         <div class="hero-card">
-          <p style="margin:0; letter-spacing:0.18em; text-transform:uppercase; color:#d97706; font-weight:700;">Clinical Decision Environment</p>
+          <p style="margin:0; letter-spacing:0.18em; text-transform:uppercase; color:#c67a12; font-weight:700;">AI-Assisted Clinical Triage</p>
           <h1 class="hero-title">MediAssist Clinical Triage System</h1>
           <p class="hero-subtitle">
-            An explainable triage environment with structured case routing, safety-aware scoring,
-            and equity-sensitive clinical decision support.
+            A structured health-triage system with explainable scoring, safe decision routing,
+            and equity-aware patient assessment.
           </p>
         </div>
         """
@@ -359,10 +415,13 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
             with gr.Row():
                 step_btn = gr.Button("Step", variant="primary")
                 reset_btn = gr.Button("Reset Case")
+                benchmark_btn = gr.Button("Run Benchmark")
             message_output = gr.Textbox(label="System Output", interactive=False, value="System ready.")
-            reward_output = gr.Textbox(label="Reward Analysis", interactive=False, value=_reward_detail(None, state))
+            reward_output = gr.Textbox(label="Reward Summary", interactive=False, value=_reward_detail(None, state))
+            benchmark_output = gr.Textbox(label="Benchmark Output", interactive=False, value="Benchmark ready.")
             history_output = gr.Markdown(value=_history_markdown(state.get("history", [])), label="Episode Timeline")
         with gr.Column(scale=8):
+            reward_panel = gr.HTML(value=_reward_breakdown_html(None, state, {}))
             explanation_html = gr.HTML(
                 value=_build_explanation_html(
                     {
@@ -390,6 +449,7 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
             state_output,
             message_output,
             reward_output,
+            reward_panel,
             metrics_html,
             case_brief_html,
             equity_html,
@@ -406,6 +466,7 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
             state_output,
             message_output,
             reward_output,
+            reward_panel,
             metrics_html,
             case_brief_html,
             equity_html,
@@ -413,6 +474,11 @@ with gr.Blocks(title="MediAssist Triage Arena") as demo:
             history_output,
             benchmark_html,
         ],
+    )
+
+    benchmark_btn.click(
+        fn=run_benchmark,
+        outputs=[benchmark_html, benchmark_output],
     )
 
 

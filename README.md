@@ -12,7 +12,7 @@ pinned: false
 
 # MediAssist Triage Arena
 
-MediAssist Triage Arena is an OpenEnv-style health triage simulator built for hackathon demos.
+MediAssist Triage Arena is an OpenEnv-style health triage system for structured patient assessment and care routing.
 
 It provides a scenario-based environment where the user can choose actions such as:
 
@@ -38,7 +38,7 @@ The environment returns:
 - Explainable scoring with urgency, risk score, verdict, and rationale
 - Scenario-driven decisions for emergency, clinic, telemedicine, self-care, and doctor-visit cases
 - Benchmark mode for quick quantitative evaluation
-- Gradio interface for interactive demo viewing
+- Gradio interface for interactive clinical workflow review
 - Scenario selector for switching between multiple patient cases
 - Step history and accumulated reward tracking during each episode
 
@@ -88,9 +88,9 @@ This repository includes:
 - scenario definitions under `medienv/tasks.py`
 - reward logic under `medienv/grader.py`
 
-## Demo behavior
+## System behavior
 
-The Gradio demo is designed to:
+The Gradio interface is designed to:
 
 - display the current observation clearly, including symptoms, severity, age group, and access constraints
 - allow the user to select a scenario
@@ -98,7 +98,7 @@ The Gradio demo is designed to:
 - let the user reset for a new case
 - show reward, rationale, completion status, and decision history after each action
 
-## How to use the demo
+## How to use the interface
 
 - select a scenario
 - read the case summary and current state
@@ -139,6 +139,6 @@ In general:
 
 - The environment is designed to run offline.
 - No external APIs or cloud databases are required.
-- The demo runs from the repository and the deployed Hugging Face Space.
+- The interface runs from the repository and the deployed Hugging Face Space.
 - The OpenEnv entry must exactly match the class name in code: `medienv.environment:HealthTriageEnv`
 - `app.py` builds the Gradio UI, connects the `step` and `reset` controls, and launches the demo
