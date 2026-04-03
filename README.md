@@ -1,3 +1,15 @@
+---
+title: MediAssist Triage Arena
+emoji: "hospital"
+colorFrom: teal
+colorTo: amber
+sdk: gradio
+sdk_version: "6.10.0"
+python_version: "3.12"
+app_file: app.py
+pinned: false
+---
+
 # MediAssist Triage Arena
 
 MediAssist Triage Arena is a polished OpenEnv-style health triage simulator built for hackathon demos. It combines explainable reward design, care-equity signals, benchmark mode, and a judge-friendly Gradio interface.
