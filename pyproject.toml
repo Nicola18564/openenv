@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mediassist-triage-arena"
+version = "0.1.0"
+description = "Explainable and equity-aware OpenEnv-compatible health triage environment."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+  { name = "Shivakumar" }
+]
+dependencies = [
+  "gradio>=5.0.0",
+  "fastapi>=0.110.0",
+  "openai>=1.0.0",
+  "uvicorn>=0.30.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["medienv*"]
+
+[tool.setuptools.package-data]
+medienv = ["scenarios.json"]
