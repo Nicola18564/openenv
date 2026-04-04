@@ -3,10 +3,8 @@ title: MediAssist Triage Arena
 emoji: "🏥"
 colorFrom: blue
 colorTo: green
-sdk: gradio
-sdk_version: "6.10.0"
-python_version: "3.12"
-app_file: app.py
+sdk: docker
+app_port: 7860
 pinned: false
 ---
 
