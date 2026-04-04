@@ -17,12 +17,14 @@ class HealthTriageEnvironmentTests(unittest.TestCase):
         state = env.reset()
         self.assertIn("symptoms", state)
         self.assertIn("severity", state)
+        self.assertIn("risk_score", state)
+        self.assertIn("urgency", state)
 
     def test_invalid_action_penalized(self):
         env = HealthTriageEnv(seed=1)
         env.reset()
         _, reward, done, info = env.step("BAD_ACTION")
-        self.assertEqual(reward, -1.0)
+        self.assertEqual(reward, -2.0)
         self.assertFalse(done)
         self.assertIn("error", info)
 
@@ -35,6 +37,34 @@ class HealthTriageEnvironmentTests(unittest.TestCase):
         env = HealthTriageEnv(seed=1)
         state = env.reset()
         self.assertIn(env.expert_policy(state), env.available_actions())
+
+    def test_emergency_case_rewards_safe_escalation(self):
+        scenarios = load_scenarios()
+        emergency_case = next(item for item in scenarios if item["name"] == "Fall emergency")
+        env = HealthTriageEnv(emergency_case)
+        env.reset()
+        state, reward, done, info = env.step("ESCALATE_EMERGENCY")
+        self.assertTrue(done)
+        self.assertGreater(reward, 0)
+        self.assertEqual(info["resolution_quality"], "safe_final")
+        self.assertEqual(state["total_reward"], reward)
+
+    def test_support_message_is_useful_for_low_risk_distress(self):
+        scenarios = load_scenarios()
+        support_case = next(item for item in scenarios if item["name"] == "Panic with palpitations")
+        env = HealthTriageEnv(support_case)
+        env.reset()
+        _, reward, done, info = env.step("PROVIDE_SUPPORT_MESSAGE")
+        self.assertFalse(done)
+        self.assertGreater(reward, 0)
+        self.assertIn("empathy", info["reward_breakdown"])
+
+    def test_benchmark_returns_expected_fields(self):
+        env = HealthTriageEnv(seed=1)
+        summary = env.benchmark(episodes=5)
+        self.assertIn("average_reward", summary)
+        self.assertIn("successful_triage_rate", summary)
+        self.assertIn("urgency_breakdown", summary)
 
     def test_session_log_is_capped(self):
         original_path = app.SESSION_LOG_PATH
@@ -53,6 +83,12 @@ class HealthTriageEnvironmentTests(unittest.TestCase):
                 "mental_state": "neutral",
                 "fall_flag": False,
                 "epidemic_flag": False,
+                "risk_score": 18,
+                "urgency": "low",
+                "total_reward": 0.0,
+                "context_collected": False,
+                "support_provided": False,
+                "history": [],
             }
             app.save_session_log("Mild headache", state, {"ok": True}, 1.0)
             saved = json.loads(app.SESSION_LOG_PATH.read_text(encoding="utf-8"))

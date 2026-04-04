@@ -1,32 +1,82 @@
 [
   {
     "name": "Mild headache",
+    "summary": "Adult with a mild headache, no red flags, and stable symptoms after a busy day.",
     "symptoms": "mild headache and fatigue",
     "age_group": "adult",
     "severity": "low",
     "rural_access": false,
-    "mental_state": "neutral",
+    "mental_state": "worried",
     "fall_flag": false,
-    "epidemic_flag": false
+    "epidemic_flag": false,
+    "chronic_conditions": [],
+    "red_flags": []
   },
   {
     "name": "Fever and cough",
+    "summary": "Remote adult with fever and cough during a local outbreak but without collapse or chest pain.",
     "symptoms": "fever and cough for two days",
     "age_group": "adult",
     "severity": "medium",
     "rural_access": true,
-    "mental_state": "neutral",
+    "mental_state": "worried",
     "fall_flag": false,
-    "epidemic_flag": true
+    "epidemic_flag": true,
+    "chronic_conditions": [
+      "asthma"
+    ],
+    "red_flags": [
+      "persistent fever"
+    ]
   },
   {
     "name": "Fall emergency",
+    "summary": "Elderly patient after a fall with severe weakness and inability to stand without help.",
     "symptoms": "fell down and cannot stand up",
     "age_group": "elderly",
     "severity": "high",
     "rural_access": false,
     "mental_state": "distressed",
     "fall_flag": true,
-    "epidemic_flag": false
+    "epidemic_flag": false,
+    "chronic_conditions": [
+      "hypertension"
+    ],
+    "red_flags": [
+      "fall",
+      "unable to stand",
+      "possible fracture"
+    ]
+  },
+  {
+    "name": "Postpartum fever",
+    "summary": "Recent postpartum patient with rising fever and increasing abdominal pain that now needs in-person care.",
+    "symptoms": "fever and abdominal pain after delivery",
+    "age_group": "adult",
+    "severity": "high",
+    "rural_access": false,
+    "mental_state": "fatigued",
+    "fall_flag": false,
+    "epidemic_flag": false,
+    "chronic_conditions": [],
+    "red_flags": [
+      "postpartum fever",
+      "worsening pain"
+    ]
+  },
+  {
+    "name": "Panic with palpitations",
+    "summary": "Low-risk stress response where reassurance matters before giving self-care guidance.",
+    "symptoms": "palpitations and fear after stress",
+    "age_group": "adult",
+    "severity": "low",
+    "rural_access": false,
+    "mental_state": "panicked",
+    "fall_flag": false,
+    "epidemic_flag": false,
+    "chronic_conditions": [
+      "anxiety"
+    ],
+    "red_flags": []
   }
 ]

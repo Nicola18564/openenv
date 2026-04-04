@@ -15,10 +15,17 @@ def run_baseline(episodes=20):
 
     for _ in range(episodes):
         state = env.reset()
-        action = env.expert_policy(state)
-        _, reward, done, info = env.step(action)
-        rewards.append(reward)
-        solved += int(done and action == info["correct_action"])
+        done = False
+        total_reward = 0.0
+        info = {}
+
+        while not done:
+            action = env.expert_policy(state)
+            state, reward, done, info = env.step(action)
+            total_reward += reward
+
+        rewards.append(total_reward)
+        solved += int(info.get("resolution_quality") == "safe_final")
 
     average_reward = sum(rewards) / len(rewards)
     success_rate = (solved / episodes) * 100

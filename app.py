@@ -16,30 +16,20 @@ SCENARIOS = {item["name"]: item for item in load_scenarios()}
 
 ACTION_LABELS = {
     "ASK_FOLLOWUP": "Ask follow-up question",
-    "ESCALATE_EMERGENCY": "Escalate to emergency care",
+    "PROVIDE_SUPPORT_MESSAGE": "Provide support message",
+    "RECOMMEND_SELF_CARE": "Recommend self-care",
     "RECOMMEND_CLINIC": "Recommend clinic visit",
     "RECOMMEND_DOCTOR_VISIT": "Recommend doctor visit",
-    "RECOMMEND_SELF_CARE": "Recommend self-care",
-    "PROVIDE_SUPPORT_MESSAGE": "Provide support message",
+    "ESCALATE_EMERGENCY": "Escalate to emergency care",
 }
 
 
 def suggestion_text(env):
     if env is None:
         return "Reset the environment to get an action suggestion."
+    if env.done:
+        return "Episode complete. Reset the case to start again."
     return f"Suggested next action: {env.expert_policy()}"
-
-
-def reward_explanation(reward):
-    if reward >= 3:
-        return "Strong positive reward for a safe high-priority decision."
-    if reward >= 2:
-        return "Positive reward for an appropriate disposition."
-    if reward > 0:
-        return "Small positive reward for useful information gathering."
-    if reward == 0:
-        return "Neutral reward."
-    return "Negative reward because the action was weak or unsafe for the case."
 
 
 def _default_metrics():
@@ -47,6 +37,7 @@ def _default_metrics():
         "episodes_started": 0,
         "episodes_completed": 0,
         "successful_episodes": 0,
+        "unsafe_episodes": 0,
         "total_reward": 0.0,
         "last_reward": 0.0,
     }
@@ -54,18 +45,21 @@ def _default_metrics():
 
 def metrics_text(metrics):
     average_reward = 0.0
+    success_rate = 0.0
+    unsafe_rate = 0.0
     if metrics["episodes_completed"]:
         average_reward = metrics["total_reward"] / metrics["episodes_completed"]
-    success_rate = 0.0
-    if metrics["episodes_completed"]:
         success_rate = (metrics["successful_episodes"] / metrics["episodes_completed"]) * 100
+        unsafe_rate = (metrics["unsafe_episodes"] / metrics["episodes_completed"]) * 100
     return (
         f"Episodes started: {metrics['episodes_started']}\n"
         f"Episodes completed: {metrics['episodes_completed']}\n"
-        f"Successful episodes: {metrics['successful_episodes']}\n"
+        f"Safe final decisions: {metrics['successful_episodes']}\n"
+        f"Unsafe final decisions: {metrics['unsafe_episodes']}\n"
         f"Cumulative reward: {metrics['total_reward']:.1f}\n"
         f"Average reward: {average_reward:.2f}\n"
-        f"Success rate: {success_rate:.1f}%\n"
+        f"Safe final rate: {success_rate:.1f}%\n"
+        f"Unsafe final rate: {unsafe_rate:.1f}%\n"
         f"Last reward: {metrics['last_reward']:.1f}"
     )
 
@@ -76,6 +70,7 @@ def save_session_log(scenario_name, state, info, reward):
         "reward": reward,
         "done": state["done"],
         "step_count": state["step_count"],
+        "total_reward": state["total_reward"],
         "state": state,
         "info": info,
     }
@@ -90,23 +85,111 @@ def save_session_log(scenario_name, state, info, reward):
         existing = existing[-500:]
     SESSION_LOG_PATH.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
+
+def _history_lines(history):
+    if not history:
+        return "- No actions taken yet."
+    return "\n".join(
+        f"- Step {item['step']}: `{item['action']}` ({item['reward']:+.1f}, {item['alignment']})"
+        for item in history
+    )
+
+
 def pretty_state(state):
-    return f"""
-*Symptoms:* {state['symptoms']}  
-*Age group:* {state['age_group']}  
-*Severity:* {state['severity']}  
-*Rural access:* {state['rural_access']}  
-*Mental state:* {state['mental_state']}  
-*Fall flag:* {state['fall_flag']}  
-*Epidemic flag:* {state['epidemic_flag']}  
-*Step count:* {state['step_count']}  
-*Done:* {state['done']}
+    if not state:
+        return "### No case loaded"
+
+    chronic_conditions = ", ".join(state.get("chronic_conditions", [])) or "None"
+    red_flags = ", ".join(state.get("red_flags", [])) or "None"
+    return f"""### Current Case
+**Scenario:** {state.get("name", "Unknown")}
+
+**Summary:** {state.get("summary", "No summary available.")}
+
+- Symptoms: `{state.get("symptoms", "No symptoms recorded")}`
+- Age group: **{state.get("age_group", "unknown").title()}**
+- Severity: **{state.get("severity", "unknown").title()}**
+- Urgency: **{state.get("urgency", "unknown").title()}**
+- Risk score: **{state.get("risk_score", 0)} / 100**
+- Rural access barrier: **{"Yes" if state.get("rural_access") else "No"}**
+- Mental state: **{state.get("mental_state", "unknown")}**
+- Fall risk flag: **{"Yes" if state.get("fall_flag") else "No"}**
+- Epidemic flag: **{"Yes" if state.get("epidemic_flag") else "No"}**
+- Chronic conditions: **{chronic_conditions}**
+- Red flags: **{red_flags}**
+
+### Episode Progress
+- Steps used: **{state.get("step_count", 0)} / 4**
+- Total reward: **{state.get("total_reward", 0.0):+.1f}**
+- Context collected: **{"Yes" if state.get("context_collected") else "No"}**
+- Support provided: **{"Yes" if state.get("support_provided") else "No"}**
+- Done: **{"Yes" if state.get("done") else "No"}**
+
+### History
+{_history_lines(state.get("history", []))}
 """
+
+
+def reward_panel(info=None, reward=0.0, state=None):
+    if not isinstance(info, dict):
+        urgency = (state or {}).get("urgency", "unknown")
+        risk_score = (state or {}).get("risk_score", 0)
+        return f"""### Reward Analysis
+- Current risk: **{risk_score} / 100**
+- Urgency: **{str(urgency).title()}**
+- The reward model scores **safety**, **sequence fit**, **access fit**, **empathy**, and **efficiency**.
+- Unsafe under-triage gets the strongest penalty.
+"""
+
+    reward_breakdown = info.get("reward_breakdown", {})
+    care_plan = " -> ".join(info.get("care_plan", [])) or "Not available"
+    next_action = info.get("suggested_next_action") or "Episode complete"
+    return f"""### Reward Analysis
+- Step reward: **{reward:+.1f}**
+- Verdict: **{info.get("verdict", "unknown").replace("_", " ").title()}**
+- Resolution: **{info.get("resolution_quality", "unknown").replace("_", " ").title()}**
+- Safety: **{reward_breakdown.get("safety", 0.0):+.1f}**
+- Sequence fit: **{reward_breakdown.get("sequence", 0.0):+.1f}**
+- Access fit: **{reward_breakdown.get("access", 0.0):+.1f}**
+- Empathy: **{reward_breakdown.get("empathy", 0.0):+.1f}**
+- Efficiency: **{reward_breakdown.get("efficiency", 0.0):+.1f}**
+- Care plan: **{care_plan}**
+- Next best action: **{next_action}**
+
+**Rationale:** {info.get("rationale", "No rationale available.")}
+"""
+
+
+def format_info_text(info):
+    if not isinstance(info, dict):
+        return str(info)
+    care_plan = " -> ".join(info.get("care_plan", [])) or "Not available"
+    return (
+        f"Step: {info.get('step_count', '-')}\n"
+        f"Urgency: {info.get('urgency', '-')}\n"
+        f"Alignment: {info.get('action_alignment', '-')}\n"
+        f"Resolution: {info.get('resolution_quality', '-')}\n"
+        f"Care plan: {care_plan}\n"
+        f"Rationale: {info.get('rationale', 'No rationale available.')}"
+    )
+
 
 def reset_env(scenario_name, metrics):
     metrics = metrics or _default_metrics()
     if scenario_name not in SCENARIOS:
-        return None, scenario_name, None, "Invalid scenario.", 0.0, False, "Invalid scenario selected.", "", metrics, metrics_text(metrics)
+        return (
+            None,
+            scenario_name,
+            None,
+            "Invalid scenario.",
+            0.0,
+            False,
+            "Invalid scenario selected.",
+            reward_panel(),
+            "",
+            metrics,
+            metrics_text(metrics),
+        )
 
     try:
         env = HealthTriageEnv(SCENARIOS[scenario_name])
@@ -121,21 +204,59 @@ def reset_env(scenario_name, metrics):
             0.0,
             False,
             "Environment reset.",
+            reward_panel(state=state),
             suggestion_text(env),
             metrics,
             metrics_text(metrics),
         )
     except Exception as exc:
         LOGGER.exception("Reset failed")
-        return None, scenario_name, None, "Reset failed.", 0.0, True, str(exc), "", metrics, metrics_text(metrics)
+        return (
+            None,
+            scenario_name,
+            None,
+            "Reset failed.",
+            0.0,
+            True,
+            str(exc),
+            reward_panel(),
+            "",
+            metrics,
+            metrics_text(metrics),
+        )
+
 
 def do_step(env, scenario_name, state, action, metrics):
     metrics = metrics or _default_metrics()
     if env is None:
-        return env, scenario_name, state, "Please reset first.", 0.0, False, "No active environment.", "", metrics, metrics_text(metrics)
+        return (
+            env,
+            scenario_name,
+            state,
+            "Please reset first.",
+            0.0,
+            False,
+            "No active environment.",
+            reward_panel(state=state),
+            "",
+            metrics,
+            metrics_text(metrics),
+        )
     if action not in ACTION_LABELS:
         safe_state = pretty_state(state) if state else "No state available."
-        return env, scenario_name, state, safe_state, -1.0, False, "Invalid action selected.", suggestion_text(env), metrics, metrics_text(metrics)
+        return (
+            env,
+            scenario_name,
+            state,
+            safe_state,
+            -2.0,
+            False,
+            "Invalid action selected.",
+            reward_panel(state=state),
+            suggestion_text(env),
+            metrics,
+            metrics_text(metrics),
+        )
 
     try:
         next_state, reward, done, info = env.step(action)
@@ -143,14 +264,39 @@ def do_step(env, scenario_name, state, action, metrics):
         metrics["total_reward"] += reward
         if done:
             metrics["episodes_completed"] += 1
-            metrics["successful_episodes"] += int(action == env.expert_policy(next_state))
+            metrics["successful_episodes"] += int(info.get("resolution_quality") == "safe_final")
+            metrics["unsafe_episodes"] += int(info.get("resolution_quality") == "unsafe_final")
         save_session_log(scenario_name, next_state, info, reward)
-        info_text = f"{info}\n\nReward meaning: {reward_explanation(reward)}"
-        return env, scenario_name, next_state, pretty_state(next_state), reward, done, info_text, suggestion_text(env), metrics, metrics_text(metrics)
+        return (
+            env,
+            scenario_name,
+            next_state,
+            pretty_state(next_state),
+            reward,
+            done,
+            format_info_text(info),
+            reward_panel(info, reward, next_state),
+            suggestion_text(env),
+            metrics,
+            metrics_text(metrics),
+        )
     except Exception as exc:
         LOGGER.exception("Step failed")
         safe_state = pretty_state(state) if state else "No state available."
-        return env, scenario_name, state, safe_state, 0.0, True, f"Error occurred: {exc}", suggestion_text(env), metrics, metrics_text(metrics)
+        return (
+            env,
+            scenario_name,
+            state,
+            safe_state,
+            0.0,
+            True,
+            f"Error occurred: {exc}",
+            reward_panel(state=state),
+            suggestion_text(env),
+            metrics,
+            metrics_text(metrics),
+        )
+
 
 with gr.Blocks() as demo:
     gr.Markdown("# AI-Assisted Triage\n\n## MediAssist Triage System")
@@ -179,21 +325,47 @@ with gr.Blocks() as demo:
     state_box = gr.Markdown()
     reward_box = gr.Number(label="Reward")
     done_box = gr.Checkbox(label="Done")
-    info_box = gr.Textbox(label="Info", lines=4)
+    info_box = gr.Textbox(label="Decision Log", lines=6)
+    reward_detail_box = gr.Markdown("### Reward Analysis\nTake an action to see the advanced score breakdown.")
     suggestion_box = gr.Textbox(label="AI Suggestion", lines=2)
-    metrics_box = gr.Textbox(label="Performance Metrics", lines=7, value=metrics_text(_default_metrics()))
+    metrics_box = gr.Textbox(label="Performance Metrics", lines=9, value=metrics_text(_default_metrics()))
 
     reset_btn.click(
         fn=reset_env,
         inputs=[scenario_dropdown, metrics_state],
-        outputs=[env_state, scenario_state, data_state, state_box, reward_box, done_box, info_box, suggestion_box, metrics_state, metrics_box],
+        outputs=[
+            env_state,
+            scenario_state,
+            data_state,
+            state_box,
+            reward_box,
+            done_box,
+            info_box,
+            reward_detail_box,
+            suggestion_box,
+            metrics_state,
+            metrics_box,
+        ],
     )
 
     step_btn.click(
         fn=do_step,
         inputs=[env_state, scenario_state, data_state, action_dropdown, metrics_state],
-        outputs=[env_state, scenario_state, data_state, state_box, reward_box, done_box, info_box, suggestion_box, metrics_state, metrics_box],
+        outputs=[
+            env_state,
+            scenario_state,
+            data_state,
+            state_box,
+            reward_box,
+            done_box,
+            info_box,
+            reward_detail_box,
+            suggestion_box,
+            metrics_state,
+            metrics_box,
+        ],
     )
+
 
 if __name__ == "__main__":
     demo.launch(
