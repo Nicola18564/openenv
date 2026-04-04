@@ -1,9 +1,14 @@
 import json
 import logging
 import os
+import socket
 from pathlib import Path
+from threading import Lock
 
 import gradio as gr
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 from medienv.environment import HealthTriageEnv, load_scenarios
 
@@ -22,6 +27,8 @@ ACTION_LABELS = {
     "RECOMMEND_DOCTOR_VISIT": "Recommend doctor visit",
     "ESCALATE_EMERGENCY": "Escalate to emergency care",
 }
+
+DEFAULT_SCENARIO_NAME = "Mild headache"
 
 
 def suggestion_text(env):
@@ -174,6 +181,87 @@ def format_info_text(info):
     )
 
 
+class ResetRequest(BaseModel):
+    scenario_name: str | None = None
+
+
+class StepRequest(BaseModel):
+    action: str
+
+
+class OpenEnvSession:
+    def __init__(self):
+        self._lock = Lock()
+        self._env = None
+        self._scenario_name = DEFAULT_SCENARIO_NAME
+
+    def _reset_unlocked(self, scenario_name=None):
+        selected_name = scenario_name or self._scenario_name
+        if selected_name not in SCENARIOS:
+            raise ValueError(f"Unknown scenario: {selected_name}")
+        self._scenario_name = selected_name
+        self._env = HealthTriageEnv(SCENARIOS[selected_name])
+        state = self._env.reset()
+        return {
+            "scenario": selected_name,
+            "observation": state,
+            "state": state,
+            "done": state["done"],
+            "available_actions": self._env.available_actions(),
+        }
+
+    def reset(self, scenario_name=None):
+        with self._lock:
+            return self._reset_unlocked(scenario_name)
+
+    def state(self):
+        with self._lock:
+            if self._env is None:
+                return self._reset_unlocked(self._scenario_name)
+            state = self._env._build_state()
+            return {
+                "scenario": self._scenario_name,
+                "observation": state,
+                "state": state,
+                "done": state["done"],
+                "available_actions": self._env.available_actions(),
+            }
+
+    def step(self, action):
+        with self._lock:
+            if action not in ACTION_LABELS:
+                raise ValueError(f"Invalid action: {action}")
+            if self._env is None:
+                self._reset_unlocked(self._scenario_name)
+            observation, reward, done, info = self._env.step(action)
+            save_session_log(self._scenario_name, observation, info, reward)
+            return {
+                "scenario": self._scenario_name,
+                "observation": observation,
+                "state": observation,
+                "reward": reward,
+                "done": done,
+                "info": info,
+                "available_actions": self._env.available_actions(),
+            }
+
+
+def _choose_server_port():
+    configured_port = os.getenv("GRADIO_SERVER_PORT") or os.getenv("PORT")
+    if configured_port:
+        return int(configured_port)
+
+    for candidate in range(7860, 7891):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("127.0.0.1", candidate))
+            except OSError:
+                continue
+            return candidate
+    return 7860
+
+
 def reset_env(scenario_name, metrics):
     metrics = metrics or _default_metrics()
     if scenario_name not in SCENARIOS:
@@ -302,14 +390,14 @@ with gr.Blocks() as demo:
     gr.Markdown("# AI-Assisted Triage\n\n## MediAssist Triage System")
 
     env_state = gr.State(None)
-    scenario_state = gr.State("Mild headache")
+    scenario_state = gr.State(DEFAULT_SCENARIO_NAME)
     data_state = gr.State(None)
     metrics_state = gr.State(_default_metrics())
 
     with gr.Row():
         scenario_dropdown = gr.Dropdown(
             choices=list(SCENARIOS.keys()),
-            value="Mild headache",
+            value=DEFAULT_SCENARIO_NAME,
             label="Scenario",
         )
         action_dropdown = gr.Dropdown(
@@ -367,8 +455,52 @@ with gr.Blocks() as demo:
     )
 
 
+openenv_session = OpenEnvSession()
+api = FastAPI(title="MediAssist OpenEnv API", version="1.0.0")
+
+
+@api.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@api.post("/reset")
+def api_reset(payload: ResetRequest | None = None):
+    try:
+        scenario_name = payload.scenario_name if payload else None
+        return openenv_session.reset(scenario_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@api.post("/step")
+def api_step(payload: StepRequest):
+    try:
+        return openenv_session.step(payload.action)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@api.get("/state")
+@api.post("/state")
+def api_state():
+    return openenv_session.state()
+
+
+@api.get("/actions")
+def api_actions():
+    return {
+        "available_actions": list(ACTION_LABELS.keys()),
+        "action_labels": ACTION_LABELS,
+    }
+
+
+app = gr.mount_gradio_app(api, demo, path="/")
+
+
 if __name__ == "__main__":
-    demo.launch(
-        server_name=os.getenv("GRADIO_SERVER_NAME", "127.0.0.1"),
-        server_port=int(os.getenv("GRADIO_SERVER_PORT", "7860")),
+    uvicorn.run(
+        app,
+        host=os.getenv("GRADIO_SERVER_NAME", "127.0.0.1"),
+        port=_choose_server_port(),
     )

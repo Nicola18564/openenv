@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 import app
+from fastapi.testclient import TestClient
 from medienv.environment import HealthTriageEnv, load_scenarios
 
 
@@ -65,6 +66,25 @@ class HealthTriageEnvironmentTests(unittest.TestCase):
         self.assertIn("average_reward", summary)
         self.assertIn("successful_triage_rate", summary)
         self.assertIn("urgency_breakdown", summary)
+
+    def test_openenv_reset_endpoint(self):
+        client = TestClient(app.app)
+        response = client.post("/reset", json={"scenario_name": "Mild headache"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("observation", payload)
+        self.assertIn("available_actions", payload)
+        self.assertEqual(payload["scenario"], "Mild headache")
+
+    def test_openenv_step_endpoint(self):
+        client = TestClient(app.app)
+        client.post("/reset", json={"scenario_name": "Fall emergency"})
+        response = client.post("/step", json={"action": "ESCALATE_EMERGENCY"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("reward", payload)
+        self.assertIn("info", payload)
+        self.assertTrue(payload["done"])
 
     def test_session_log_is_capped(self):
         original_path = app.SESSION_LOG_PATH
