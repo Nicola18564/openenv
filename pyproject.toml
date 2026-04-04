@@ -20,14 +20,14 @@ dependencies = [
 ]
 
 [project.scripts]
-server = "app:main"
+server = "server.app:main"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["medienv*"]
+include = ["medienv*", "server*"]
 
 [tool.setuptools.package-data]
 medienv = ["scenarios.json"]
