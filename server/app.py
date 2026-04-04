@@ -1,3 +1,16 @@
-from app import app, main
+from app import app as root_app
+from app import main as root_main
+
+
+app = root_app
+
+
+def main():
+    return root_main()
+
+
+if __name__ == "__main__":
+    main()
+
 
 __all__ = ["app", "main"]
