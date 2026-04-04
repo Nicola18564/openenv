@@ -1,575 +1,198 @@
-import gradio as gr
 import json
+import logging
+from pathlib import Path
 
-from medienv.environment import HealthTriageEnv
-from medienv.tasks import ACTION_CATALOG, SCENARIOS
+import gradio as gr
+
+from medienv.environment import HealthTriageEnv, load_scenarios
 
 
-env = HealthTriageEnv(seed=7)
-state = env.reset(case_id=SCENARIOS[0]["id"])
+logging.basicConfig(level=logging.INFO)
+LOGGER = logging.getLogger(__name__)
+SESSION_LOG_PATH = Path("session_logs.json")
 
+SCENARIOS = {item["name"]: item for item in load_scenarios()}
 
-CSS = """
-:root {
-  --bg: #f3efe7;
-  --paper: rgba(255, 253, 249, 0.92);
-  --ink: #152536;
-  --muted: #5f6f7f;
-  --primary: #0b6e69;
-  --accent: #c67a12;
-  --danger: #b42318;
-  --border: rgba(11, 110, 105, 0.14);
-  --shadow: 0 20px 70px rgba(21, 37, 54, 0.12);
+ACTION_LABELS = {
+    "ASK_FOLLOWUP": "Ask follow-up question",
+    "ESCALATE_EMERGENCY": "Escalate to emergency care",
+    "RECOMMEND_CLINIC": "Recommend clinic visit",
+    "RECOMMEND_DOCTOR_VISIT": "Recommend doctor visit",
+    "RECOMMEND_SELF_CARE": "Recommend self-care",
+    "PROVIDE_SUPPORT_MESSAGE": "Provide support message",
 }
 
-.gradio-container {
-  background:
-    radial-gradient(circle at top left, rgba(198, 122, 18, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(11, 110, 105, 0.17), transparent 26%),
-    linear-gradient(135deg, #f7f2ea 0%, #eef7f6 100%);
-  color: var(--ink);
-  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
-}
 
-.hero-card, .panel-card, .metric-card {
-  background: var(--paper);
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  box-shadow: var(--shadow);
-}
+def suggestion_text(env):
+    if env is None:
+        return "Reset the environment to get an action suggestion."
+    return f"Suggested next action: {env.expert_policy()}"
 
-.hero-card {
-  padding: 24px 28px;
-  margin-bottom: 18px;
-}
 
-.hero-title {
-  font-size: 2.35rem;
-  line-height: 1.05;
-  margin: 0;
-  color: #16324a;
-}
+def reward_explanation(reward):
+    if reward >= 3:
+        return "Strong positive reward for a safe high-priority decision."
+    if reward >= 2:
+        return "Positive reward for an appropriate disposition."
+    if reward > 0:
+        return "Small positive reward for useful information gathering."
+    if reward == 0:
+        return "Neutral reward."
+    return "Negative reward because the action was weak or unsafe for the case."
 
-.hero-subtitle {
-  margin-top: 10px;
-  color: var(--muted);
-  font-size: 1.02rem;
-}
 
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
+def _default_metrics():
+    return {
+        "episodes_started": 0,
+        "episodes_completed": 0,
+        "successful_episodes": 0,
+        "total_reward": 0.0,
+        "last_reward": 0.0,
+    }
 
-.metric-card {
-  padding: 14px 16px;
-}
 
-.metric-label {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
+def metrics_text(metrics):
+    average_reward = 0.0
+    if metrics["episodes_completed"]:
+        average_reward = metrics["total_reward"] / metrics["episodes_completed"]
+    success_rate = 0.0
+    if metrics["episodes_completed"]:
+        success_rate = (metrics["successful_episodes"] / metrics["episodes_completed"]) * 100
+    return (
+        f"Episodes started: {metrics['episodes_started']}\n"
+        f"Episodes completed: {metrics['episodes_completed']}\n"
+        f"Successful episodes: {metrics['successful_episodes']}\n"
+        f"Cumulative reward: {metrics['total_reward']:.1f}\n"
+        f"Average reward: {average_reward:.2f}\n"
+        f"Success rate: {success_rate:.1f}%\n"
+        f"Last reward: {metrics['last_reward']:.1f}"
+    )
 
-.metric-value {
-  font-size: 1.7rem;
-  font-weight: 700;
-  margin-top: 8px;
-  color: #0b3b36;
-}
 
-.badge-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
+def save_session_log(scenario_name, state, info, reward):
+    entry = {
+        "scenario": scenario_name,
+        "reward": reward,
+        "done": state["done"],
+        "step_count": state["step_count"],
+        "state": state,
+        "info": info,
+    }
+    existing = []
+    if SESSION_LOG_PATH.exists():
+        try:
+            existing = json.loads(SESSION_LOG_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            existing = []
+    existing.append(entry)
+    if len(existing) > 1000:
+        existing = existing[-500:]
+    SESSION_LOG_PATH.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
-.badge {
-  background: rgba(15, 118, 110, 0.1);
-  border: 1px solid rgba(15, 118, 110, 0.16);
-  border-radius: 999px;
-  padding: 7px 12px;
-  font-size: 0.85rem;
-}
-
-.status-strip {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 14px;
-}
-
-.status-pill {
-  border-radius: 999px;
-  padding: 8px 14px;
-  font-size: 0.84rem;
-  border: 1px solid rgba(11, 110, 105, 0.14);
-  background: rgba(11, 110, 105, 0.08);
-}
-
-.quality-banner {
-  border-radius: 20px;
-  padding: 16px 18px;
-  border: 1px solid rgba(21, 37, 54, 0.08);
-  margin-bottom: 14px;
-}
-
-.quality-title {
-  font-size: 1.15rem;
-  font-weight: 700;
-  margin: 0 0 8px 0;
-}
-
-.danger {
-  color: var(--danger);
-  font-weight: 700;
-}
-
-@media (max-width: 900px) {
-  .metric-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
+def pretty_state(state):
+    return f"""
+*Symptoms:* {state['symptoms']}  
+*Age group:* {state['age_group']}  
+*Severity:* {state['severity']}  
+*Rural access:* {state['rural_access']}  
+*Mental state:* {state['mental_state']}  
+*Fall flag:* {state['fall_flag']}  
+*Epidemic flag:* {state['epidemic_flag']}  
+*Step count:* {state['step_count']}  
+*Done:* {state['done']}
 """
 
-
-def _history_markdown(history):
-    if not history:
-        return "No actions recorded yet."
-    return "\n".join(f"{idx}. `{item}`" for idx, item in enumerate(history, start=1))
-
-
-def _scenario_choices():
-    return [f"{case['id']} | {case['title']}" for case in SCENARIOS]
-
-
-def _extract_case_id(choice):
-    return choice.split("|", 1)[0].strip()
-
-
-def _build_metrics_html(current_state):
-    urgency_color = {
-        "critical": "#b91c1c",
-        "high": "#c2410c",
-        "moderate": "#0f766e",
-        "low": "#2563eb",
-    }.get(current_state.get("urgency"), "#334155")
-    return f"""
-    <div class="metric-grid">
-      <div class="metric-card">
-        <div class="metric-label">Urgency</div>
-        <div class="metric-value" style="color:{urgency_color}">{current_state.get("urgency", "-").title()}</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Risk Score</div>
-        <div class="metric-value">{current_state.get("risk_score", 0)}/100</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Episode Reward</div>
-        <div class="metric-value">{current_state.get("total_reward", 0)}</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Actions Taken</div>
-        <div class="metric-value">{len(current_state.get("history", []))}</div>
-      </div>
-    </div>
-    """
-
-
-def _build_case_brief_html(current_state):
-    symptoms = ", ".join(current_state.get("symptoms", []))
-    red_flags = current_state.get("red_flags", [])
-    chronic_conditions = current_state.get("chronic_conditions", [])
-
-    red_flag_html = "".join(
-        f'<span class="badge danger">{flag.replace("_", " ").title()}</span>' for flag in red_flags
-    ) or '<span class="badge">No critical red flags</span>'
-
-    chronic_html = "".join(
-        f'<span class="badge">{item.replace("_", " ").title()}</span>' for item in chronic_conditions
-    ) or '<span class="badge">No chronic condition reported</span>'
-
-    return f"""
-    <div class="panel-card" style="padding:18px 20px;">
-      <h3 style="margin:0; color:#102a43;">{current_state.get("title", "Case Brief")}</h3>
-      <p style="margin:8px 0 0 0; color:#475569;">{current_state.get("summary", "")}</p>
-      <div class="badge-row" style="margin-top:14px;">
-        <span class="badge">Age: {current_state.get("age_group", "-").title()}</span>
-        <span class="badge">Severity: {current_state.get("severity", "-").title()}</span>
-        <span class="badge">Duration: {current_state.get("duration_days", "-")} day(s)</span>
-        <span class="badge">Symptoms: {symptoms}</span>
-      </div>
-      <div class="badge-row">{red_flag_html}</div>
-      <div class="badge-row">{chronic_html}</div>
-    </div>
-    """
-
-
-def _build_equity_html(current_state):
-    chips = []
-    if current_state.get("rural_access"):
-        chips.append("Rural access barrier")
-    if current_state.get("mobility_issues"):
-        chips.append("Mobility constraints")
-    if current_state.get("language_barrier"):
-        chips.append("Language support needed")
-    if current_state.get("insurance_risk"):
-        chips.append("Financial follow-up risk")
-    if not chips:
-        chips.append("No major access barriers flagged")
-
-    chip_html = "".join(f'<span class="badge">{chip}</span>' for chip in chips)
-    return f"""
-    <div class="panel-card" style="padding:18px 20px;">
-      <h3 style="margin:0 0 10px 0; color:#102a43;">Care Equity Lens</h3>
-      <p style="margin:0; color:#475569;">
-        The simulator highlights social and access barriers so judges can see this project is not only clinically aware,
-        but also designed for real-world care delivery.
-      </p>
-      <div class="badge-row">{chip_html}</div>
-    </div>
-    """
-
-
-def _build_explanation_html(info):
-    explanation = info.get("explanation", {})
-    assessment = explanation.get("assessment", {})
-    path = info.get("recommended_path", [])
-    path_text = " -> ".join(path) if path else "Not available"
-
-    return f"""
-    <div class="panel-card" style="padding:18px 20px;">
-      <h3 style="margin:0 0 10px 0; color:#102a43;">Decision Intelligence</h3>
-      <p style="margin:0 0 8px 0;"><strong>Expert action:</strong> {info.get("expert_action", "-")}</p>
-      <p style="margin:0 0 8px 0;"><strong>Recommended path:</strong> {path_text}</p>
-      <p style="margin:0 0 8px 0;"><strong>Verdict:</strong> {explanation.get("verdict", "-").title()}</p>
-      <p style="margin:0 0 8px 0;"><strong>Rationale:</strong> {explanation.get("rationale", "No explanation yet.")}</p>
-      <p style="margin:0;"><strong>Signals:</strong> risk={assessment.get("risk_score", "-")}, urgency={assessment.get("urgency", "-")}, access={assessment.get("access_risk", "-")}, social={assessment.get("social_risk", "-")}</p>
-    </div>
-    """
-
-
-def _build_benchmark_html():
-    benchmark_env = HealthTriageEnv(seed=21)
-    report = benchmark_env.benchmark(episodes=30)
-    breakdown = report["urgency_breakdown"]
-    return f"""
-    <div class="panel-card" style="padding:18px 20px;">
-      <h3 style="margin:0 0 10px 0; color:#102a43;">Benchmark Snapshot</h3>
-      <p style="margin:0 0 8px 0;"><strong>Episodes:</strong> {report['episodes']}</p>
-      <p style="margin:0 0 8px 0;"><strong>Average reward:</strong> {report['average_reward']}</p>
-      <p style="margin:0 0 8px 0;"><strong>Successful triage rate:</strong> {report['successful_triage_rate']}%</p>
-      <p style="margin:0;"><strong>Urgency mix:</strong> critical {breakdown['critical']}, high {breakdown['high']}, moderate {breakdown['moderate']}, low {breakdown['low']}</p>
-    </div>
-    """
-
-
-def _reward_detail(last_reward, current_state):
-    status = "Episode Complete" if current_state.get("done") else "Active"
-    total_reward = current_state.get("total_reward", 0)
-
-    if last_reward is None:
-        impact = "Awaiting first action"
-    elif last_reward >= 12:
-        impact = "Critical-safe decision"
-    elif last_reward >= 10:
-        impact = "Correct final disposition"
-    elif last_reward >= 3:
-        impact = "Useful information gathering"
-    elif last_reward >= 0:
-        impact = "Low-impact safe step"
-    elif last_reward <= -10:
-        impact = "Unsafe under-triage"
-    else:
-        impact = "Incorrect final recommendation"
-
-    return f"Step Reward: {last_reward if last_reward is not None else 0} | Total Reward: {total_reward} | Assessment: {impact} | Status: {status}"
-
-
-def _reward_breakdown_html(last_reward, current_state, info=None):
-    info = info or {}
-    explanation = info.get("explanation", {})
-    verdict = explanation.get("verdict", "ready").title()
-    score = current_state.get("risk_score", 0)
-    urgency = current_state.get("urgency", "-").title()
-    step_reward = 0 if last_reward is None else last_reward
-
-    return f"""
-    <div class="panel-card" style="padding:18px 20px;">
-      <h3 style="margin:0 0 10px 0; color:#16324a;">Reward Analysis</h3>
-      <div class="status-strip">
-        <span class="status-pill">Step Reward: {step_reward}</span>
-        <span class="status-pill">Total Reward: {current_state.get("total_reward", 0)}</span>
-        <span class="status-pill">Risk Score: {score}</span>
-        <span class="status-pill">Urgency: {urgency}</span>
-        <span class="status-pill">Verdict: {verdict}</span>
-      </div>
-      <p style="margin:14px 0 0 0; color:#475569;">
-        Score meaning: information gathering earns a small positive score, correct non-emergency routing earns a medium score,
-        correct emergency escalation earns the highest positive score, and unsafe under-triage receives a strong penalty.
-      </p>
-    </div>
-    """
-
-
-def _quality_label(info, current_state):
-    verdict = info.get("explanation", {}).get("verdict", "ready")
-    done = current_state.get("done", False)
-
-    mapping = {
-        "ready": ("System Ready", "#eff6ff", "#1d4ed8"),
-        "optimal": ("High-Confidence Triage", "#ecfdf3", "#027a48"),
-        "reasonable": ("Safe Investigative Step", "#fffaeb", "#b54708"),
-        "partial": ("Partial Evidence", "#fff7ed", "#c2410c"),
-        "suboptimal": ("Needs Better Routing", "#fef3f2", "#b42318"),
-        "unsafe": ("Unsafe Under-Triage", "#fef2f2", "#b42318"),
-    }
-    label, bg, ink = mapping.get(verdict, ("System Ready", "#eff6ff", "#1d4ed8"))
-    if done and verdict == "optimal":
-        label = "Episode Closed Safely"
-    return label, bg, ink
-
-
-def _quality_banner_html(info, current_state):
-    label, bg, ink = _quality_label(info, current_state)
-    rationale = info.get("explanation", {}).get(
-        "rationale",
-        "Select an action to generate a triage quality assessment."
-    )
-    return f"""
-    <div class="quality-banner" style="background:{bg}; color:{ink};">
-      <p class="quality-title">{label}</p>
-      <p style="margin:0;">{rationale}</p>
-    </div>
-    """
-
-
-def _episode_log_text(current_state, info=None):
-    info = info or {}
-    payload = {
-        "case_id": current_state.get("case_id"),
-        "title": current_state.get("title"),
-        "urgency": current_state.get("urgency"),
-        "risk_score": current_state.get("risk_score"),
-        "total_reward": current_state.get("total_reward"),
-        "done": current_state.get("done"),
-        "history": current_state.get("history", []),
-        "expert_action": info.get("expert_action"),
-        "recommended_path": info.get("recommended_path", []),
-        "explanation": info.get("explanation", {}),
-    }
-    return json.dumps(payload, indent=2)
-
-
-def export_episode_log():
-    info = {
-        "expert_action": env.expert_policy(state),
-        "recommended_path": [],
-        "explanation": env.last_explanation or {
-            "verdict": "ready",
-            "rationale": "No completed action has been recorded yet.",
-        },
-    }
-    return _episode_log_text(state, info)
-
-
-def run_benchmark():
-    benchmark_env = HealthTriageEnv(seed=21)
-    report = benchmark_env.benchmark(episodes=50)
-    breakdown = report["urgency_breakdown"]
-    summary = (
-        f"Episodes: {report['episodes']} | "
-        f"Average Reward: {report['average_reward']} | "
-        f"Success Rate: {report['successful_triage_rate']}% | "
-        f"Urgency Mix: critical {breakdown['critical']}, high {breakdown['high']}, "
-        f"moderate {breakdown['moderate']}, low {breakdown['low']}"
-    )
-    return _build_benchmark_html(), summary
-
-
-def _render(current_state, message, info=None):
-    info = info or {}
-    reward_text = _reward_detail(info.get("step_reward"), current_state)
-    return (
-        current_state,
-        message,
-        reward_text,
-        _quality_banner_html(info, current_state),
-        _reward_breakdown_html(info.get("step_reward"), current_state, info),
-        _episode_log_text(current_state, info),
-        _build_metrics_html(current_state),
-        _build_case_brief_html(current_state),
-        _build_equity_html(current_state),
-        _build_explanation_html(info),
-        _history_markdown(current_state.get("history", [])),
-        _build_benchmark_html(),
-    )
-
-
-def reset_env(case_choice):
-    global state
-    case_id = _extract_case_id(case_choice) if case_choice else None
-    state = env.reset(case_id=case_id)
-    message = f"Loaded case {state['case_id']}. Review the case summary and choose the next triage action."
-    info = {
-        "step_reward": None,
-        "recommended_path": [],
-        "expert_action": env.expert_policy(state),
-        "explanation": {
-            "verdict": "ready",
-            "rationale": "Case initialized. Use the action selector to gather information or issue a care decision.",
-            "assessment": {
-                "risk_score": state["risk_score"],
-                "urgency": state["urgency"],
-                "access_risk": state["access_risk"],
-                "social_risk": state["social_risk"],
-            },
-        },
-    }
-    return _render(state, message, info)
-
-
-def step_env(action):
-    global state
-    if not action:
-        return _render(state, "Choose an action before stepping the environment.")
+def reset_env(scenario_name, metrics):
+    metrics = metrics or _default_metrics()
+    if scenario_name not in SCENARIOS:
+        return None, scenario_name, None, "Invalid scenario.", 0.0, False, "Invalid scenario selected.", "", metrics, metrics_text(metrics)
 
     try:
-        state, reward, done, info = env.step(action)
-        info["step_reward"] = reward
-        if done:
-            message = f"Action recorded. Step reward {reward}. Episode closed with total score {state['total_reward']}."
-        else:
-            message = f"Action recorded. Step reward {reward}. Continue triage or finalize the care route."
-        return _render(state, message, info)
+        env = HealthTriageEnv(SCENARIOS[scenario_name])
+        state = env.reset()
+        metrics["episodes_started"] += 1
+        LOGGER.info("Scenario reset: %s", scenario_name)
+        return (
+            env,
+            scenario_name,
+            state,
+            pretty_state(state),
+            0.0,
+            False,
+            "Environment reset.",
+            suggestion_text(env),
+            metrics,
+            metrics_text(metrics),
+        )
     except Exception as exc:
-        return _render(state, f"Error: {exc}")
+        LOGGER.exception("Reset failed")
+        return None, scenario_name, None, "Reset failed.", 0.0, True, str(exc), "", metrics, metrics_text(metrics)
 
+def do_step(env, scenario_name, state, action, metrics):
+    metrics = metrics or _default_metrics()
+    if env is None:
+        return env, scenario_name, state, "Please reset first.", 0.0, False, "No active environment.", "", metrics, metrics_text(metrics)
+    if action not in ACTION_LABELS:
+        safe_state = pretty_state(state) if state else "No state available."
+        return env, scenario_name, state, safe_state, -1.0, False, "Invalid action selected.", suggestion_text(env), metrics, metrics_text(metrics)
 
-with gr.Blocks(title="MediAssist Triage Arena") as demo:
-    gr.HTML(
-        """
-        <div class="hero-card">
-          <p style="margin:0; letter-spacing:0.18em; text-transform:uppercase; color:#c67a12; font-weight:700;">AI-Assisted Clinical Triage</p>
-          <h1 class="hero-title">MediAssist Clinical Triage System</h1>
-          <p class="hero-subtitle">
-            A structured health-triage system with explainable scoring, safe decision routing,
-            and equity-aware patient assessment.
-          </p>
-        </div>
-        """
-    )
+    try:
+        next_state, reward, done, info = env.step(action)
+        metrics["last_reward"] = reward
+        metrics["total_reward"] += reward
+        if done:
+            metrics["episodes_completed"] += 1
+            metrics["successful_episodes"] += int(action == env.expert_policy(next_state))
+        save_session_log(scenario_name, next_state, info, reward)
+        info_text = f"{info}\n\nReward meaning: {reward_explanation(reward)}"
+        return env, scenario_name, next_state, pretty_state(next_state), reward, done, info_text, suggestion_text(env), metrics, metrics_text(metrics)
+    except Exception as exc:
+        LOGGER.exception("Step failed")
+        safe_state = pretty_state(state) if state else "No state available."
+        return env, scenario_name, state, safe_state, 0.0, True, f"Error occurred: {exc}", suggestion_text(env), metrics, metrics_text(metrics)
+
+with gr.Blocks() as demo:
+    gr.Markdown("# AI-Assisted Triage\n\n## MediAssist Triage System")
+
+    env_state = gr.State(None)
+    scenario_state = gr.State("Mild headache")
+    data_state = gr.State(None)
+    metrics_state = gr.State(_default_metrics())
 
     with gr.Row():
-        with gr.Column(scale=7):
-            metrics_html = gr.HTML(value=_build_metrics_html(state))
-        with gr.Column(scale=5):
-            benchmark_html = gr.HTML(value=_build_benchmark_html())
+        scenario_dropdown = gr.Dropdown(
+            choices=list(SCENARIOS.keys()),
+            value="Mild headache",
+            label="Scenario",
+        )
+        action_dropdown = gr.Dropdown(
+            choices=list(ACTION_LABELS.keys()),
+            value="RECOMMEND_SELF_CARE",
+            label="Action",
+        )
 
     with gr.Row():
-        with gr.Column(scale=7):
-            case_brief_html = gr.HTML(value=_build_case_brief_html(state))
-        with gr.Column(scale=5):
-            equity_html = gr.HTML(value=_build_equity_html(state))
+        reset_btn = gr.Button("Reset")
+        step_btn = gr.Button("Run Step")
 
-    with gr.Row():
-        with gr.Column(scale=4):
-            case_selector = gr.Dropdown(
-                choices=_scenario_choices(),
-                value=_scenario_choices()[0],
-                label="Clinical Case",
-                info="Select a patient scenario.",
-            )
-            action_input = gr.Dropdown(
-                choices=ACTION_CATALOG,
-                value="ASK_FOLLOWUP",
-                label="Triage Action",
-                info="Choose the next structured clinical action.",
-            )
-            with gr.Row():
-                step_btn = gr.Button("Step", variant="primary")
-                reset_btn = gr.Button("Reset Case")
-                benchmark_btn = gr.Button("Run Benchmark")
-            message_output = gr.Textbox(label="System Output", interactive=False, value="System ready.")
-            reward_output = gr.Textbox(label="Reward Summary", interactive=False, value=_reward_detail(None, state))
-            log_output = gr.Code(label="Episode Log", value=_episode_log_text(state, {}), language="json")
-            export_btn = gr.Button("Export Episode Log")
-            benchmark_output = gr.Textbox(label="Benchmark Output", interactive=False, value="Benchmark ready.")
-            history_output = gr.Markdown(value=_history_markdown(state.get("history", [])), label="Episode Timeline")
-        with gr.Column(scale=8):
-            quality_banner = gr.HTML(value=_quality_banner_html({}, state))
-            reward_panel = gr.HTML(value=_reward_breakdown_html(None, state, {}))
-            explanation_html = gr.HTML(
-                value=_build_explanation_html(
-                    {
-                        "recommended_path": [],
-                        "expert_action": env.expert_policy(state),
-                        "explanation": {
-                            "verdict": "ready",
-                            "rationale": "Start the simulation to see reasoning, expert policy, and care path guidance.",
-                            "assessment": {
-                                "risk_score": state["risk_score"],
-                                "urgency": state["urgency"],
-                                "access_risk": state["access_risk"],
-                                "social_risk": state["social_risk"],
-                            },
-                        },
-                    }
-                )
-            )
-            state_output = gr.JSON(label="OpenEnv State", value=state)
-
-    step_btn.click(
-        fn=step_env,
-        inputs=action_input,
-        outputs=[
-            state_output,
-            message_output,
-            reward_output,
-            quality_banner,
-            reward_panel,
-            log_output,
-            metrics_html,
-            case_brief_html,
-            equity_html,
-            explanation_html,
-            history_output,
-            benchmark_html,
-        ],
-    )
+    state_box = gr.Markdown()
+    reward_box = gr.Number(label="Reward")
+    done_box = gr.Checkbox(label="Done")
+    info_box = gr.Textbox(label="Info", lines=4)
+    suggestion_box = gr.Textbox(label="AI Suggestion", lines=2)
+    metrics_box = gr.Textbox(label="Performance Metrics", lines=7, value=metrics_text(_default_metrics()))
 
     reset_btn.click(
         fn=reset_env,
-        inputs=case_selector,
-        outputs=[
-            state_output,
-            message_output,
-            reward_output,
-            quality_banner,
-            reward_panel,
-            log_output,
-            metrics_html,
-            case_brief_html,
-            equity_html,
-            explanation_html,
-            history_output,
-            benchmark_html,
-        ],
+        inputs=[scenario_dropdown, metrics_state],
+        outputs=[env_state, scenario_state, data_state, state_box, reward_box, done_box, info_box, suggestion_box, metrics_state, metrics_box],
     )
 
-    benchmark_btn.click(
-        fn=run_benchmark,
-        outputs=[benchmark_html, benchmark_output],
+    step_btn.click(
+        fn=do_step,
+        inputs=[env_state, scenario_state, data_state, action_dropdown, metrics_state],
+        outputs=[env_state, scenario_state, data_state, state_box, reward_box, done_box, info_box, suggestion_box, metrics_state, metrics_box],
     )
-
-    export_btn.click(
-        fn=export_episode_log,
-        outputs=log_output,
-    )
-
 
 if __name__ == "__main__":
-    demo.launch(css=CSS)
+    demo.launch()

@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Mild headache",
+    "symptoms": "mild headache and fatigue",
+    "age_group": "adult",
+    "severity": "low",
+    "rural_access": false,
+    "mental_state": "neutral",
+    "fall_flag": false,
+    "epidemic_flag": false
+  },
+  {
+    "name": "Fever and cough",
+    "symptoms": "fever and cough for two days",
+    "age_group": "adult",
+    "severity": "medium",
+    "rural_access": true,
+    "mental_state": "neutral",
+    "fall_flag": false,
+    "epidemic_flag": true
+  },
+  {
+    "name": "Fall emergency",
+    "symptoms": "fell down and cannot stand up",
+    "age_group": "elderly",
+    "severity": "high",
+    "rural_access": false,
+    "mental_state": "distressed",
+    "fall_flag": true,
+    "epidemic_flag": false
+  }
+]

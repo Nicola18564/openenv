@@ -1,119 +1,173 @@
+import json
+import logging
 import random
+from pathlib import Path
 
-from medienv.grader import TERMINAL_ACTIONS, assess_case, compute_reward, explain_action
-from medienv.tasks import ACTION_CATALOG, SCENARIOS
+
+LOGGER = logging.getLogger(__name__)
+
+
+def load_scenarios():
+    scenario_path = Path(__file__).with_name("scenarios.json")
+    with scenario_path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
 
 
 class HealthTriageEnv:
-    def __init__(self, seed=None):
+    ACTIONS = [
+        "ASK_FOLLOWUP",
+        "ESCALATE_EMERGENCY",
+        "RECOMMEND_CLINIC",
+        "RECOMMEND_DOCTOR_VISIT",
+        "RECOMMEND_SELF_CARE",
+        "PROVIDE_SUPPORT_MESSAGE",
+    ]
+
+    DEFAULT_SCENARIOS = load_scenarios()
+
+    def __init__(self, scenario=None, seed=None):
         self.rng = random.Random(seed)
-        self.current_case = None
+        self.initial_scenario = (scenario or self.rng.choice(self.DEFAULT_SCENARIOS)).copy()
+        self.scenario = self.initial_scenario.copy()
+        self.step_count = 0
         self.done = False
         self.history = []
-        self.total_reward = 0
-        self.last_explanation = {}
+        LOGGER.info("Environment initialized with severity=%s", self.scenario["severity"])
 
-    def reset(self, case_id=None):
-        if case_id:
-            matches = [case for case in SCENARIOS if case["id"] == case_id]
-            if not matches:
-                raise ValueError(f"Unknown case_id: {case_id}")
-            self.current_case = matches[0]
-        else:
-            self.current_case = self.rng.choice(SCENARIOS)
-
+    def reset(self):
+        self.scenario = self.initial_scenario.copy()
+        self.step_count = 0
         self.done = False
         self.history = []
-        self.total_reward = 0
-        self.last_explanation = {}
-        return self.state()
+        LOGGER.info("Environment reset")
+        return self._build_state()
 
-    def available_actions(self):
-        return list(ACTION_CATALOG)
+    def step(self, action):
+        if self.done:
+            LOGGER.warning("Step called after episode completion")
+            return self._build_state(), 0.0, True, {"message": "Episode already finished."}
 
-    def state(self):
-        if self.current_case is None:
-            return {}
+        if action not in self.ACTIONS:
+            LOGGER.error("Invalid action received: %s", action)
+            return self._build_state(), -1.0, False, {"error": "Invalid action."}
 
-        assessment = assess_case(self.current_case)
-        return {
-            "case_id": self.current_case["id"],
-            "title": self.current_case["title"],
-            "summary": self.current_case["summary"],
-            "age_group": self.current_case["age_group"],
-            "symptoms": self.current_case["symptoms"],
-            "duration_days": self.current_case["duration_days"],
-            "severity": self.current_case["severity"],
-            "rural_access": self.current_case["rural_access"],
-            "mobility_issues": self.current_case["mobility_issues"],
-            "language_barrier": self.current_case["language_barrier"],
-            "insurance_risk": self.current_case["insurance_risk"],
-            "chronic_conditions": self.current_case["chronic_conditions"],
-            "red_flags": self.current_case["red_flags"],
-            "history": list(self.history),
-            "done": self.done,
-            "total_reward": self.total_reward,
-            "risk_score": assessment["risk_score"],
-            "urgency": assessment["urgency"],
-            "access_risk": assessment["access_risk"],
-            "social_risk": assessment["social_risk"],
+        self.step_count += 1
+        reward, rationale = self._compute_reward(action)
+        self._apply_transition(action)
+
+        self.history.append({"step": self.step_count, "action": action, "reward": reward})
+        LOGGER.info("Step %s action=%s reward=%s", self.step_count, action, reward)
+
+        if action in {
+            "ESCALATE_EMERGENCY",
+            "RECOMMEND_CLINIC",
+            "RECOMMEND_DOCTOR_VISIT",
+            "RECOMMEND_SELF_CARE",
+        } or self.step_count >= 3:
+            self.done = True
+
+        return self._build_state(), reward, self.done, {
+            "step_count": self.step_count,
+            "action_taken": action,
+            "rationale": rationale,
+            "history": self.history,
+            "correct_action": self.expert_policy(),
         }
 
     def expert_policy(self, state=None):
-        current_state = state or self.state()
-        if current_state.get("urgency") == "critical":
+        current = state or self._build_state()
+        if current["fall_flag"] or current["severity"] == "high":
             return "ESCALATE_EMERGENCY"
-        if current_state.get("severity") == "high" and current_state.get("rural_access"):
+        if current["severity"] == "medium" and current["rural_access"]:
             return "RECOMMEND_CLINIC"
-        if current_state.get("severity") == "high":
+        if current["severity"] == "medium":
             return "RECOMMEND_DOCTOR_VISIT"
-        if current_state.get("severity") == "moderate":
-            return "SCHEDULE_TELEMEDICINE"
         return "RECOMMEND_SELF_CARE"
 
-    def step(self, action):
-        if self.current_case is None:
-            raise ValueError("Environment not reset. Call reset() first.")
-        if self.done:
-            raise ValueError("Episode already completed. Reset the environment for a new case.")
-        if action not in ACTION_CATALOG:
-            raise ValueError(f"Unsupported action '{action}'. Choose from: {', '.join(ACTION_CATALOG)}")
+    def available_actions(self):
+        return list(self.ACTIONS)
 
-        reward = compute_reward(self.current_case, action)
-        self.total_reward += reward
-        self.history.append(action)
-        self.last_explanation = explain_action(self.current_case, action)
-
-        if action in TERMINAL_ACTIONS or len(self.history) >= 4:
-            self.done = True
-
-        info = {
-            "correct_action": self.current_case["correct_action"],
-            "recommended_path": self.current_case["recommended_path"],
-            "explanation": self.last_explanation,
-            "expert_action": self.expert_policy(),
-        }
-        return self.state(), reward, self.done, info
-
-    def benchmark(self, episodes=25):
-        total_reward = 0
+    def benchmark(self, episodes=20):
+        rewards = []
         solved = 0
-        urgency_breakdown = {"critical": 0, "high": 0, "moderate": 0, "low": 0}
+        urgency_breakdown = {"high": 0, "medium": 0, "low": 0}
 
         for _ in range(episodes):
+            self.initial_scenario = self.rng.choice(self.DEFAULT_SCENARIOS).copy()
             state = self.reset()
-            urgency_breakdown[state["urgency"]] += 1
+            urgency_breakdown[state["severity"]] += 1
             action = self.expert_policy(state)
             _, reward, done, info = self.step(action)
-            total_reward += reward
+            rewards.append(reward)
             solved += int(done and action == info["correct_action"])
 
         return {
             "episodes": episodes,
-            "average_reward": round(total_reward / episodes, 2),
+            "average_reward": round(sum(rewards) / len(rewards), 2),
             "successful_triage_rate": round((solved / episodes) * 100, 1),
             "urgency_breakdown": urgency_breakdown,
         }
 
+    def _compute_reward(self, action):
+        severity = self.scenario["severity"]
+        fall_flag = self.scenario["fall_flag"]
+        epidemic_flag = self.scenario["epidemic_flag"]
+        age_group = self.scenario["age_group"]
 
-Env = HealthTriageEnv
+        if fall_flag or severity == "high":
+            if action == "ESCALATE_EMERGENCY":
+                return 3.0, "Emergency escalation is correct for high-risk or fall-related cases."
+            if action in ["ASK_FOLLOWUP", "RECOMMEND_SELF_CARE"]:
+                return -3.0, "This is unsafe for a high-risk situation."
+            return -1.0, "A stronger response is needed for this case."
+
+        if severity == "medium":
+            if action in ["RECOMMEND_CLINIC", "RECOMMEND_DOCTOR_VISIT"]:
+                return 2.0, "Appropriate escalation for a medium-risk case."
+            if action == "ASK_FOLLOWUP":
+                return 1.0, "Useful for gathering more context."
+            if action == "RECOMMEND_SELF_CARE":
+                return -1.0, "Too mild for a medium-risk case."
+            return 0.0, "Neutral action."
+
+        if severity == "low":
+            if action in ["RECOMMEND_SELF_CARE", "PROVIDE_SUPPORT_MESSAGE", "ASK_FOLLOWUP"]:
+                return 2.0, "Reasonable response for low-risk symptoms."
+            return -1.0, "Over-escalation is unnecessary for a low-risk case."
+
+        if epidemic_flag and age_group == "elderly":
+            if action in ["RECOMMEND_DOCTOR_VISIT", "RECOMMEND_CLINIC"]:
+                return 2.0, "Good precaution for a vulnerable patient."
+            return 0.0, "No strong penalty, but better care is possible."
+
+        return 0.0, "No specific reward."
+
+    def _apply_transition(self, action):
+        if action == "ASK_FOLLOWUP":
+            self.scenario["mental_state"] = "more informed"
+        elif action == "ESCALATE_EMERGENCY":
+            self.scenario["mental_state"] = "urgent attention needed"
+        elif action == "RECOMMEND_CLINIC":
+            self.scenario["mental_state"] = "referred to clinic"
+        elif action == "RECOMMEND_DOCTOR_VISIT":
+            self.scenario["mental_state"] = "reassured and guided"
+        elif action == "RECOMMEND_SELF_CARE":
+            self.scenario["mental_state"] = "relieved"
+        elif action == "PROVIDE_SUPPORT_MESSAGE":
+            self.scenario["mental_state"] = "supported"
+
+    def _build_state(self):
+        return {
+            "symptoms": self.scenario["symptoms"],
+            "age_group": self.scenario["age_group"],
+            "severity": self.scenario["severity"],
+            "rural_access": self.scenario["rural_access"],
+            "mental_state": self.scenario["mental_state"],
+            "fall_flag": self.scenario["fall_flag"],
+            "epidemic_flag": self.scenario["epidemic_flag"],
+            "step_count": self.step_count,
+            "done": self.done,
+        }
+
+
+HealthTriageEnvironment = HealthTriageEnv
