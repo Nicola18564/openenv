@@ -82,6 +82,8 @@ medienv.environment:HealthTriageEnv
 This repository includes:
 
 - `app.py`
+- `client.py`
+- `Dockerfile`
 - `requirements.txt`
 - `README.md`
 - environment implementation under `medienv/`
