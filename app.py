@@ -2,8 +2,12 @@ import json
 import logging
 import os
 import socket
+import sys
 from pathlib import Path
 from threading import Lock
+from typing import Optional
+
+sys.dont_write_bytecode = True
 
 import gradio as gr
 import uvicorn
@@ -29,6 +33,10 @@ ACTION_LABELS = {
 }
 
 DEFAULT_SCENARIO_NAME = "Mild headache"
+
+
+def available_actions():
+    return list(ACTION_LABELS.keys())
 
 
 def suggestion_text(env):
@@ -182,7 +190,7 @@ def format_info_text(info):
 
 
 class ResetRequest(BaseModel):
-    scenario_name: str | None = None
+    scenario_name: Optional[str] = None
 
 
 class StepRequest(BaseModel):
@@ -194,6 +202,7 @@ class OpenEnvSession:
         self._lock = Lock()
         self._env = None
         self._scenario_name = DEFAULT_SCENARIO_NAME
+        self._last_observation = None
 
     def _reset_unlocked(self, scenario_name=None):
         selected_name = scenario_name or self._scenario_name
@@ -202,12 +211,13 @@ class OpenEnvSession:
         self._scenario_name = selected_name
         self._env = HealthTriageEnv(SCENARIOS[selected_name])
         state = self._env.reset()
+        self._last_observation = state
         return {
             "scenario": selected_name,
             "observation": state,
             "state": state,
             "done": state["done"],
-            "available_actions": self._env.available_actions(),
+            "available_actions": available_actions(),
         }
 
     def reset(self, scenario_name=None):
@@ -218,22 +228,23 @@ class OpenEnvSession:
         with self._lock:
             if self._env is None:
                 return self._reset_unlocked(self._scenario_name)
-            state = self._env._build_state()
+            state = self._last_observation or self._env.reset()
             return {
                 "scenario": self._scenario_name,
                 "observation": state,
                 "state": state,
                 "done": state["done"],
-                "available_actions": self._env.available_actions(),
+                "available_actions": available_actions(),
             }
 
     def step(self, action):
         with self._lock:
-            if action not in ACTION_LABELS:
+            if action not in available_actions():
                 raise ValueError(f"Invalid action: {action}")
             if self._env is None:
                 self._reset_unlocked(self._scenario_name)
             observation, reward, done, info = self._env.step(action)
+            self._last_observation = observation
             save_session_log(self._scenario_name, observation, info, reward)
             return {
                 "scenario": self._scenario_name,
@@ -242,7 +253,7 @@ class OpenEnvSession:
                 "reward": reward,
                 "done": done,
                 "info": info,
-                "available_actions": self._env.available_actions(),
+                "available_actions": available_actions(),
             }
 
 
@@ -330,7 +341,7 @@ def do_step(env, scenario_name, state, action, metrics):
             metrics,
             metrics_text(metrics),
         )
-    if action not in ACTION_LABELS:
+    if action not in available_actions():
         safe_state = pretty_state(state) if state else "No state available."
         return (
             env,
@@ -401,7 +412,7 @@ with gr.Blocks() as demo:
             label="Scenario",
         )
         action_dropdown = gr.Dropdown(
-            choices=list(ACTION_LABELS.keys()),
+            choices=available_actions(),
             value="RECOMMEND_SELF_CARE",
             label="Action",
         )
@@ -465,7 +476,7 @@ def health():
 
 
 @api.post("/reset")
-def api_reset(payload: ResetRequest | None = None):
+def api_reset(payload: Optional[ResetRequest] = None):
     try:
         scenario_name = payload.scenario_name if payload else None
         return openenv_session.reset(scenario_name)
@@ -490,7 +501,7 @@ def api_state():
 @api.get("/actions")
 def api_actions():
     return {
-        "available_actions": list(ACTION_LABELS.keys()),
+        "available_actions": available_actions(),
         "action_labels": ACTION_LABELS,
     }
 
@@ -498,9 +509,13 @@ def api_actions():
 app = gr.mount_gradio_app(api, demo, path="/")
 
 
-if __name__ == "__main__":
+def main():
     uvicorn.run(
         app,
         host=os.getenv("GRADIO_SERVER_NAME", "127.0.0.1"),
         port=_choose_server_port(),
     )
+
+
+if __name__ == "__main__":
+    main()
