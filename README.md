@@ -83,6 +83,7 @@ This repository includes:
 
 - `app.py`
 - `client.py`
+- `inference.py`
 - `Dockerfile`
 - `requirements.txt`
 - `README.md`
@@ -90,6 +91,16 @@ This repository includes:
 - benchmark script under `baseline/`
 - scenario definitions under `medienv/scenarios.json`
 - unit tests in `test_environment.py`
+
+## Submission agent file
+
+The repository also includes `inference.py`, which:
+
+- reads `API_BASE_URL` and `MODEL_NAME` with defaults
+- reads optional `HF_TOKEN`
+- reads optional `LOCAL_IMAGE_NAME`
+- uses `from openai import OpenAI` for LLM calls
+- prints structured `START`, `STEP`, and `END` logs
 
 ## System behavior
 
@@ -147,4 +158,3 @@ In general:
 - The OpenEnv entry must exactly match the class name in code: `medienv.environment:HealthTriageEnv`
 - `app.py` builds the Gradio UI, connects the `step` and `reset` controls, and launches the interface
 - session history is stored locally in `session_logs.json`
-- if you see an ICU or runtime descriptor warning, it is usually a local Python/Gradio environment issue rather than a logic error in the triage code
