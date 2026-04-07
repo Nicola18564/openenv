@@ -243,6 +243,11 @@ class OpenEnvSession:
                 raise ValueError(f"Invalid action: {action}")
             if self._env is None:
                 self._reset_unlocked(self._scenario_name)
+
+            # Ensure env is initialized before stepping
+            if self._env is None:
+                raise RuntimeError("Failed to initialize environment")
+
             observation, reward, done, info = self._env.step(action)
             self._last_observation = observation
             save_session_log(self._scenario_name, observation, info, reward)
