@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from openai import OpenAI
 from client import MediAssistClient
 
@@ -15,7 +16,6 @@ def build_llm_client():
     try:
         # Check if API key is available
         if not API_KEY or API_KEY.strip() == "":
-            print("WARNING: OPENAI_API_KEY not set, will use fallback policy")
             return None
 
         kwargs = {
@@ -24,10 +24,8 @@ def build_llm_client():
             "timeout": API_TIMEOUT,
         }
         client = OpenAI(**kwargs)
-        print(f"LLM client initialized with base_url: {API_BASE_URL}")
         return client
     except Exception as e:
-        print(f"LLM init failed: {str(e)}")
         return None
 
 
@@ -37,7 +35,6 @@ def choose_action(client, observation, actions):
     try:
         # fallback if client not available
         if client is None:
-            print("No LLM client available, using fallback policy")
             return actions[0] if actions else None
 
         prompt = (
@@ -60,24 +57,20 @@ def choose_action(client, observation, actions):
 
         # Validate response structure
         if not response or not response.choices:
-            print("ERROR: Invalid response structure from API")
             return actions[0] if actions else None
 
         action = response.choices[0].message.content.strip()
 
         # ensure valid action
         if not actions:
-            print("ERROR: No actions available")
             return None
 
         if action not in actions:
-            print(f"WARNING: Invalid action '{action}' returned, using fallback")
             return actions[0]
 
         return action
 
     except Exception as e:
-        print(f"ERROR in choose_action: {str(e)}")
         return actions[0] if actions else None
 
 
@@ -87,39 +80,37 @@ def main():
     try:
         # Initialize environment client (local, not remote)
         env = MediAssistClient()
-        print("Environment client initialized successfully")
     except Exception as e:
-        print(f"FATAL ERROR connecting to env: {str(e)}")
+        print(f"[START] task=medical_triage", flush=True)
+        print(f"[END] task=medical_triage score=0.0 steps=0", flush=True)
         return
 
     try:
         reset_result = env.reset()
-        print("Environment reset successfully")
     except Exception as e:
-        print(f"FATAL ERROR during reset: {str(e)}")
+        print(f"[START] task=medical_triage", flush=True)
+        print(f"[END] task=medical_triage score=0.0 steps=0", flush=True)
         return
 
     # Reset result is a dictionary from the environment
     observation = reset_result
     actions = env.available_actions()
 
-    print(f"Initial observation: {json.dumps(observation)}")
-    print(f"Available actions: {actions}")
+    print(f"[START] task=medical_triage", flush=True)
 
     llm = build_llm_client()
 
     done = False
     step_index = 0
+    total_reward = 0.0
 
     while not done and step_index < 3:
         # ===== SAFE ACTION SELECTION =====
         try:
             action = choose_action(llm, observation, actions)
             if action is None:
-                print(f"ERROR: No valid action could be selected")
                 break
         except Exception as e:
-            print(f"FATAL ERROR choosing action: {str(e)}")
             if actions:
                 action = actions[0]
             else:
@@ -129,28 +120,23 @@ def main():
         try:
             result = env.step(action)
         except Exception as e:
-            print(f"ERROR in env.step: {str(e)}")
             break
 
         observation = result.observation
         done = result.done
+        reward = result.reward
+        total_reward += reward
 
-        print(
-            "STEP",
-            json.dumps(
-                {
-                    "index": step_index,
-                    "action": action,
-                    "reward": result.reward,
-                    "done": result.done,
-                    "info": result.info,
-                }
-            ),
-        )
+        # Print structured step output
+        print(f"[STEP] step={step_index+1} reward={reward:.2f}", flush=True)
 
         step_index += 1
 
-    print(f"Episode completed. Steps taken: {step_index}")
+    # Calculate final score (normalized by steps, capped at 1.0)
+    final_score = min(max(total_reward / max(step_index, 1), 0.0), 1.0)
+
+    print(f"[END] task=medical_triage score={final_score:.2f} steps={step_index}", flush=True)
+
     env.close()
 
 
