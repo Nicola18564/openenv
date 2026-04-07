@@ -8,96 +8,288 @@ app_port: 7860
 pinned: false
 ---
 
-# MediAssist Triage Arena
+# MediAssist Triage Arena - Health Triage OpenEnv
 
-MediAssist Triage Arena is an OpenEnv-style health triage system for structured patient assessment and care routing.
+![Status](https://img.shields.io/badge/Status-Active-brightgreen)
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-It provides a scenario-based environment where the user can choose actions such as:
+An AI-powered health triage system for structured patient assessment and care routing using the OpenEnv framework. This system combines explainability, equity awareness, and reward-based learning to support medical decision-making.
 
-- ask follow-up questions
-- provide support message
-- recommend self-care
-- recommend clinic visit
-- recommend doctor visit
-- escalate to emergency care
+## 🎯 Features
 
-The environment returns:
+### Core Functionality
+- **Scenario-based triage environment** with 5+ patient case scenarios
+- **Action selection** supporting 6 different care pathways:
+  - Ask follow-up questions
+  - Provide support message
+  - Recommend self-care
+  - Recommend clinic visit
+  - Recommend doctor visit
+  - Escalate to emergency care
 
-- observation/state
-- reward
-- done flag
-- info with explanation and recommended path
+### Explainability & Transparency
+- **Detailed reward breakdowns** across 5 dimensions:
+  - Safety (emergency risk management)
+  - Sequence fit (action order appropriateness)
+  - Access fit (equity-aware routing)
+  - Empathy (patient support)
+  - Efficiency (resource optimization)
+- Reasoning rationales for each decision
+- Care plan suggestions based on expert policy
+- Structured output format (`[START]`, `[STEP]`, `[END]` blocks) for validation
 
-## Highlights
+### Equity & Fairness
+- Rural access barriers detection
+- Elderly patient vulnerability assessment
+- Epidemic/outbreak awareness
+- Mental state tracking and support
+- Chronic condition management
 
-- Equity-aware triage signals including rural access, mobility, language, and financial barriers
-- Explainable scoring with urgency, risk score, verdict, and rationale
-- Scenario-driven decisions for emergency, clinic, self-care, support, and doctor-visit cases
-- Benchmark mode for quick quantitative evaluation
-- Gradio interface for interactive triage demo
-- Scenario selector for switching between multiple patient cases
-- Step history and accumulated reward tracking during each episode
-- AI action suggestion based on expert policy
-- Local JSON session logging for offline review
-- Performance metrics dashboard for reward and success tracking
+### User Interfaces
+- **Gradio web interface** for interactive exploration
+- **RESTful API** endpoints for programmatic access
+- **Local client library** for Python integration
+- **Batch inference script** for evaluation
 
-## Run locally
+### Monitoring & Analytics
+- Session logging to JSON for offline analysis
+- Performance metrics dashboard:
+  - Episodes completed
+  - Safe vs unsafe decisions
+  - Average reward tracking
+  - Success rates
+- Step-by-step action history with rewards
+
+## 🚀 Quick Start
+
+### Local Installation
 
 ```bash
+# Clone repository
+git clone https://github.com/Nicola18564/openenv.git
+cd openenv
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Run web interface
 python app.py
 ```
 
-## Requirements
+Then visit: `http://localhost:7860`
 
-- Python 3.12
-- Gradio
-- OpenEnv-compatible environment structure
-- No external API access required
+### Docker Deployment
 
-## Baseline benchmark
+```bash
+docker build -t mediassist-triage .
+docker run -p 7860:7860 mediassist-triage
+```
+
+## 📊 Project Structure
+
+```
+openenv/
+├── app.py                    # Gradio + FastAPI web interface
+├── inference.py              # Batch inference with structured output
+├── client.py                 # Python client library
+├── test_environment.py       # Unit tests
+├── requirements.txt          # Dependencies
+├── Dockerfile               # Container configuration
+├── README.md                # This file
+├── baseline/
+│   └── run_baseline.py      # Performance benchmark script
+├── medienv/
+│   ├── __init__.py
+│   ├── environment.py       # Core HealthTriageEnvironment class
+│   ├── grader.py           # Reward computation logic
+│   ├── tasks.py            # Task definitions
+│   └── scenarios.json       # 5+ patient scenarios
+└── server/
+    └── app.py              # Server entry point
+```
+
+## 💻 API Endpoints
+
+### REST API (FastAPI)
+
+```bash
+# Health check
+GET /health
+
+# Reset environment
+POST /reset
+Body: { "scenario_name": "Mild headache" }  # optional
+
+# Take action
+POST /step
+Body: { "action": "ASK_FOLLOWUP" }
+
+# Get current state
+GET /state
+POST /state
+
+# List actions
+GET /actions
+```
+
+### Python Client
+
+```python
+from client import MediAssistClient
+
+# Initialize
+env = MediAssistClient(scenario_name="Mild headache")
+
+# Reset and get initial state
+state = env.reset()
+print(state.observation)
+
+# Take actions
+result = env.step("ASK_FOLLOWUP")
+print(f"Reward: {result.reward}, Done: {result.done}")
+
+# Available actions
+actions = env.available_actions()
+```
+
+## 🧪 Inference & Evaluation
+
+### Running Inference with Structured Output
+
+```bash
+python inference.py
+```
+
+This will:
+1. Initialize a local triage environment
+2. Reset with a random scenario
+3. Execute up to 3 steps with action selection
+4. Output structured blocks for validation:
+   ```
+   [START] task=medical_triage
+   [STEP] step=1 reward=1.80
+   [STEP] step=2 reward=-0.20
+   [END] task=medical_triage score=0.47 steps=3
+   ```
+
+### LLM Integration
+
+The inference script supports OpenAI API integration:
+
+```bash
+OPENAI_API_KEY="sk-..." python inference.py
+```
+
+Without an API key, it gracefully falls back to deterministic policies.
+
+### Benchmark Mode
 
 ```bash
 python baseline/run_baseline.py
 ```
 
-Benchmark mode reports:
+Reports aggregate metrics across 20 episodes.
 
-- average reward
-- successful triage rate
-- urgency breakdown across sampled cases
+## 📋 Scenarios
 
-## OpenEnv entry
+The system includes diverse patient scenarios:
 
-The environment entry point is:
+1. **Mild headache** - Low risk, reassurance appropriate
+2. **Fever and cough** - Medium risk with epidemic context
+3. **Fall emergency** - High risk elderly patient
+4. **Pediatric concern** - Child-specific vulnerability
+5. **Chronic disorder** - Complex multi-condition case
 
-```text
-medienv.environment:HealthTriageEnv
+## 🛠️ Technology Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Web Framework | FastAPI + Gradio |
+| Server | Uvicorn |
+| Environment | Custom Python implementation |
+| Testing | unittest |
+| Container | Docker |
+| LLM Integration | OpenAI SDK |
+
+## ✅ Validation & Testing
+
+### Phase 1: Basic Functionality ✓
+- Environment initialization
+- State/action interface compliance
+- No unhandled exceptions
+
+### Phase 2: Structured Output ✓
+- Properly formatted `[START]`/`[STEP]`/`[END]` blocks
+- All output to stdout (not stderr)
+- Proper output flushing
+
+### Phase 3+: Advanced Features
+- Improved reward functions
+- LLM policy optimization
+- Equity metrics validation
+
+## 🔧 Configuration
+
+### Environment Variables
+
+```bash
+# LLM Configuration
+OPENAI_API_KEY        # Your OpenAI API key
+OPENAI_BASE_URL       # Default: https://api.openai.com/v1
+API_TIMEOUT           # API call timeout in seconds (default: 10)
+
+# Server Configuration
+GRADIO_SERVER_NAME    # Bind address (default: 127.0.0.1)
+GRADIO_SERVER_PORT    # Port number (default: auto-detect 7860-7890)
+PORT                  # Alternative port specification
 ```
 
-## Submission contents
+### Runtime Options
 
-This repository includes:
+Modify in `app.py` or `inference.py` as needed:
+- `DEFAULT_SCENARIO_NAME`
+- `MODEL_NAME` (for LLM calls)
+- `MAX_STEPS` per episode
+- Reward weighting
 
-- `app.py`
-- `client.py`
-- `inference.py`
-- `Dockerfile`
-- `requirements.txt`
-- `README.md`
-- environment implementation under `medienv/`
-- benchmark script under `baseline/`
-- scenario definitions under `medienv/scenarios.json`
-- unit tests in `test_environment.py`
+## 📝 Error Handling
 
-## Submission agent file
+The system includes robust error handling:
+- Missing API keys: Graceful fallback to heuristic policies
+- API timeouts: 10-second timeout with automatic retry
+- Invalid actions: Validation with informative error messages
+- Network failures: Comprehensive exception catching
 
-The repository also includes `inference.py`, which:
+## 🤝 Contributing
 
-- reads `API_BASE_URL` and `MODEL_NAME` with defaults
-- reads optional `HF_TOKEN`
-- reads optional `LOCAL_IMAGE_NAME`
-- uses `from openai import OpenAI` for LLM calls
+Contributions welcome! Areas for enhancement:
+- Additional patient scenarios
+- Improved reward functions
+- Better LLM prompts for action selection
+- Healthcare domain expertise integration
+- Performance optimizations
+
+## 📄 License
+
+This project is part of the PyTorch Hackathon submission.
+
+## 🔗 Links
+
+- **GitHub**: https://github.com/Nicola18564/openenv
+- **Hugging Face Space**: https://huggingface.co/spaces/Shivakumar184510/mediassist-triage-arena
+- **API Documentation**: Available at `/docs` endpoint when running server
+
+## 📞 Support
+
+For issues or questions:
+1. Check the GitHub Issues
+2. Review test cases in `test_environment.py`
+3. Consult scenario definitions in `medienv/scenarios.json`
+
+---
+
+**Built with ❤️ for healthcare equity and explainable AI**
 - prints structured `START`, `STEP`, and `END` logs
 
 ## System behavior
