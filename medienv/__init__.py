@@ -1,3 +1,3 @@
-from .environment import HealthTriageEnv, HealthTriageEnvironment, load_scenarios
+from .environment import HealthTriageEnvironment, HealthTriageEnv, load_scenarios
 
-__all__ = ["HealthTriageEnv", "HealthTriageEnvironment", "load_scenarios"]
+__all__ = ["HealthTriageEnvironment", "HealthTriageEnv", "load_scenarios"]
