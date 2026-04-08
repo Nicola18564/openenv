@@ -1,145 +1,99 @@
 import json
 import os
-import sys
+
 from openai import OpenAI
+
 from client import MediAssistClient
 
-# ===== CONFIG =====
-MODEL_NAME = "gpt-3.5-turbo"
-API_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-API_KEY = os.getenv("OPENAI_API_KEY", "")
-API_TIMEOUT = 10  # seconds
 
-# ===== BUILD LLM CLIENT SAFELY =====
+TASK_NAME = "medical_triage"
+DEFAULT_MODEL = "gpt-4.1-mini"
+API_TIMEOUT = 10
+
+
+def _get_env(name, fallback=None):
+    value = os.getenv(name)
+    if value is not None and value.strip():
+        return value
+    return fallback
+
+
 def build_llm_client():
-    """Build an OpenAI client with proper validation and timeout."""
-    try:
-        # Check if API key is available
-        if not API_KEY or API_KEY.strip() == "":
-            return None
+    """
+    Build the OpenAI client using the injected OpenEnv proxy variables.
 
-        kwargs = {
-            "base_url": API_BASE_URL,
-            "api_key": API_KEY,
-            "timeout": API_TIMEOUT,
-        }
-        client = OpenAI(**kwargs)
-        return client
-    except Exception as e:
+    The evaluator injects API_BASE_URL and API_KEY. We keep legacy fallbacks
+    for local runs, but the preferred path is the injected proxy.
+    """
+    api_base_url = _get_env("API_BASE_URL", _get_env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    api_key = _get_env("API_KEY", _get_env("OPENAI_API_KEY"))
+    model_name = _get_env("MODEL_NAME", DEFAULT_MODEL)
+
+    if not api_key:
+        return None, model_name
+
+    client = OpenAI(base_url=api_base_url, api_key=api_key, timeout=API_TIMEOUT)
+    return client, model_name
+
+
+def choose_action(client, model_name, observation, actions):
+    if not actions:
         return None
 
+    if client is None:
+        return actions[0]
 
-# ===== SAFE ACTION SELECTION =====
-def choose_action(client, observation, actions):
-    """Choose an action using LLM or fallback to first action."""
-    try:
-        # fallback if client not available
-        if client is None:
-            return actions[0] if actions else None
+    prompt = (
+        "You are a health triage assistant.\n"
+        "Choose exactly one action from the allowed list.\n\n"
+        f"Observation:\n{json.dumps(observation, ensure_ascii=False)}\n\n"
+        f"Allowed actions:\n{actions}\n\n"
+        "Return only the action token."
+    )
 
-        prompt = (
-            "You are a health triage assistant.\n"
-            "Choose exactly one action from the allowed list.\n\n"
-            f"Observation:\n{json.dumps(observation)}\n\n"
-            f"Allowed actions:\n{actions}\n\n"
-            "Return ONLY the action name."
-        )
+    response = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": "Choose the safest valid triage action."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0,
+    )
 
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "Choose the safest valid triage action."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0,
-            timeout=API_TIMEOUT,
-        )
-
-        # Validate response structure
-        if not response or not response.choices:
-            return actions[0] if actions else None
-
-        action = response.choices[0].message.content.strip()
-
-        # ensure valid action
-        if not actions:
-            return None
-
-        if action not in actions:
-            return actions[0]
-
-        return action
-
-    except Exception as e:
-        return actions[0] if actions else None
+    content = response.choices[0].message.content.strip() if response.choices else ""
+    if content in actions:
+        return content
+    return actions[0]
 
 
-# ===== MAIN EXECUTION =====
 def main():
-    """Main execution loop with comprehensive error handling."""
-    try:
-        # Initialize environment client (local, not remote)
-        env = MediAssistClient()
-    except Exception as e:
-        print(f"[START] task=medical_triage", flush=True)
-        print(f"[END] task=medical_triage score=0.0 steps=0", flush=True)
-        return
-
-    try:
-        reset_result = env.reset()
-    except Exception as e:
-        print(f"[START] task=medical_triage", flush=True)
-        print(f"[END] task=medical_triage score=0.0 steps=0", flush=True)
-        return
-
-    # Reset result is a dictionary from the environment
-    observation = reset_result
+    env = MediAssistClient()
+    observation = env.reset()
     actions = env.available_actions()
+    client, model_name = build_llm_client()
 
-    print(f"[START] task=medical_triage", flush=True)
+    print(f"[START] task={TASK_NAME}", flush=True)
 
-    llm = build_llm_client()
-
-    done = False
     step_index = 0
+    done = False
     total_reward = 0.0
 
     while not done and step_index < 3:
-        # ===== SAFE ACTION SELECTION =====
-        try:
-            action = choose_action(llm, observation, actions)
-            if action is None:
-                break
-        except Exception as e:
-            if actions:
-                action = actions[0]
-            else:
-                break
-
-        # ===== SAFE STEP =====
-        try:
-            result = env.step(action)
-        except Exception as e:
+        action = choose_action(client, model_name, observation, actions)
+        if action is None:
             break
 
+        result = env.step(action)
         observation = result.observation
         done = result.done
-        reward = result.reward
-        total_reward += reward
-
-        # Print structured step output
-        print(f"[STEP] step={step_index+1} reward={reward:.2f}", flush=True)
-
+        total_reward += result.reward
         step_index += 1
 
-    # Calculate final score (normalized by steps, capped at 1.0)
-    final_score = min(max(total_reward / max(step_index, 1), 0.0), 1.0)
+        print(f"[STEP] step={step_index} action={action} reward={result.reward:.2f}", flush=True)
 
-    print(f"[END] task=medical_triage score={final_score:.2f} steps={step_index}", flush=True)
-
-    env.close()
+    final_score = total_reward / step_index if step_index else 0.0
+    print(f"[END] task={TASK_NAME} score={final_score:.2f} steps={step_index}", flush=True)
 
 
-# ===== ENTRY POINT =====
 if __name__ == "__main__":
     main()
