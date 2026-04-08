@@ -51,48 +51,57 @@ def choose_action(client, model_name, observation, actions):
         "Return only the action token."
     )
 
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=[
-            {"role": "system", "content": "Choose the safest valid triage action."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0,
-    )
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "Choose the safest valid triage action."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
+        )
 
-    content = response.choices[0].message.content.strip() if response.choices else ""
-    if content in actions:
-        return content
+        content = response.choices[0].message.content.strip() if response.choices else ""
+        if content in actions:
+            return content
+    except Exception:
+        return actions[0]
+
     return actions[0]
 
 
 def main():
-    env = MediAssistClient()
-    observation = env.reset()
-    actions = env.available_actions()
-    client, model_name = build_llm_client()
+    try:
+        env = MediAssistClient()
+        observation = env.reset()
+        actions = env.available_actions()
+        client, model_name = build_llm_client()
 
-    print(f"[START] task={TASK_NAME}", flush=True)
+        print(f"[START] task={TASK_NAME}", flush=True)
 
-    step_index = 0
-    done = False
-    total_reward = 0.0
+        step_index = 0
+        done = False
+        total_reward = 0.0
 
-    while not done and step_index < 3:
-        action = choose_action(client, model_name, observation, actions)
-        if action is None:
-            break
+        while not done and step_index < 3:
+            action = choose_action(client, model_name, observation, actions)
+            if action is None:
+                break
 
-        result = env.step(action)
-        observation = result.observation
-        done = result.done
-        total_reward += result.reward
-        step_index += 1
+            result = env.step(action)
+            observation = result.observation
+            done = result.done
+            total_reward += result.reward
+            step_index += 1
 
-        print(f"[STEP] step={step_index} action={action} reward={result.reward:.2f}", flush=True)
+            print(f"[STEP] step={step_index} action={action} reward={result.reward:.2f}", flush=True)
 
-    final_score = total_reward / step_index if step_index else 0.0
-    print(f"[END] task={TASK_NAME} score={final_score:.2f} steps={step_index}", flush=True)
+        final_score = total_reward / step_index if step_index else 0.0
+        print(f"[END] task={TASK_NAME} score={final_score:.2f} steps={step_index}", flush=True)
+    except Exception as exc:
+        print(f"[START] task={TASK_NAME}", flush=True)
+        print(f"[STEP] step=0 action=ERROR reward=0.00", flush=True)
+        print(f"[END] task={TASK_NAME} score=0.00 steps=0", flush=True)
 
 
 if __name__ == "__main__":
