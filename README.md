@@ -188,13 +188,16 @@ This will:
 
 ### LLM Integration
 
-The inference script uses the OpenAI client with an HF token:
+The inference script uses the OpenAI client with an HF token.
+Set the token as an environment variable before running it, and do not paste the secret directly into source files or the README:
 
 ```bash
 HF_TOKEN="hf_..." API_BASE_URL="https://api.openai.com/v1" MODEL_NAME="gpt-4.1-mini" python inference.py
 ```
 
 `HF_TOKEN` is required.
+
+If you are deploying on Hugging Face Spaces, add `HF_TOKEN` in the Space settings as a secret/environment variable.
 
 ### Benchmark Mode
 
@@ -257,6 +260,15 @@ API_TIMEOUT           # API call timeout in seconds (default: 10)
 GRADIO_SERVER_NAME    # Bind address (default: 127.0.0.1)
 GRADIO_SERVER_PORT    # Port number (default: auto-detect 7860-7890)
 PORT                  # Alternative port specification
+```
+
+Example PowerShell setup:
+
+```powershell
+$env:HF_TOKEN = "hf_your_token_here"
+$env:API_BASE_URL = "https://api.openai.com/v1"
+$env:MODEL_NAME = "gpt-4.1-mini"
+python inference.py
 ```
 
 ### Runtime Options
