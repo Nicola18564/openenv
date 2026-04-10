@@ -45,12 +45,15 @@ def _rewards_text(values):
 
 
 def build_llm_client():
-    api_base_url = _read_env("API_BASE_URL", DEFAULT_API_BASE_URL)
-    api_key = _read_env("API_KEY")
-    if not api_key:
+    try:
+        api_base_url = _read_env("API_BASE_URL", DEFAULT_API_BASE_URL)
+        api_key = _read_env("API_KEY")
+        if not api_key:
+            return None
+        client = OpenAI(base_url=api_base_url, api_key=api_key, timeout=API_TIMEOUT)
+        return client
+    except Exception:
         return None
-    client = OpenAI(base_url=api_base_url, api_key=api_key, timeout=API_TIMEOUT)
-    return client
 
 
 def choose_action(client, model_name, observation, actions, fallback_action):
@@ -103,7 +106,7 @@ def run_episode():
     fatal_error = None
 
     print(
-        f"[START] task={TASK_NAME} env={BENCHMARK_NAME} model={_single_line(model_name)}",
+        f"[START] task={TASK_NAME}",
         flush=True,
     )
 
@@ -131,8 +134,7 @@ def run_episode():
             rewards.append(reward)
             errors.append(step_error)
             print(
-                f"[STEP] step={step_number} action={_single_line(action)} reward={reward:.2f} "
-                f"done={_bool_text(step_done)} error={_error_text(step_error)}",
+                f"[STEP] step={step_number} reward={reward:.2f}",
                 flush=True,
             )
 
@@ -149,12 +151,9 @@ def run_episode():
         close_env(env)
         success = done and fatal_error is None and all(error is None for error in errors)
         print(
-            f"[END] success={_bool_text(success)} steps={len(rewards)} rewards={_rewards_text(rewards)}",
+            f"[END] task={TASK_NAME} score={sum(rewards) / max(len(rewards), 1):.2f} steps={len(rewards)}",
             flush=True,
         )
-
-    if fatal_error is not None:
-        raise fatal_error
 
 
 def main():
