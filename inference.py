@@ -46,8 +46,10 @@ def _rewards_text(values):
 
 def build_llm_client():
     api_base_url = _read_env("API_BASE_URL", DEFAULT_API_BASE_URL)
-    hf_token = _read_env("HF_TOKEN", required=True)
-    client = OpenAI(base_url=api_base_url, api_key=hf_token, timeout=API_TIMEOUT)
+    api_key = _read_env("API_KEY")
+    if not api_key:
+        return None
+    client = OpenAI(base_url=api_base_url, api_key=api_key, timeout=API_TIMEOUT)
     return client
 
 
