@@ -108,6 +108,11 @@ class HealthTriageEnvironmentTests(unittest.TestCase):
         self.assertGreater(payload["reward"], 0)
         self.assertFalse(payload["done"])
 
+    def test_openenv_root_route(self):
+        client = TestClient(openenv_app)
+        response = client.get("/")
+        self.assertEqual(response.status_code, 200)
+
     def test_session_log_is_capped(self):
         original_path = app.SESSION_LOG_PATH
         test_path = Path("session_logs_test.json")

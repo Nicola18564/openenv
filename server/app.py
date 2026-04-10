@@ -12,6 +12,8 @@ REPO_ROOT = SERVER_DIR.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+os.environ.setdefault("ENABLE_WEB_INTERFACE", "true")
+
 from openenv.core.env_server.http_server import create_app
 
 from server.models import MediAssistAction, MediAssistObservation
