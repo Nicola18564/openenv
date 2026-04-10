@@ -1,57 +1,54 @@
 import json
-import math
 import os
-import re
+import sys
+
+sys.dont_write_bytecode = True
 
 from openai import OpenAI
 
-from medienv.environment import HealthTriageEnv, load_scenarios
+from medienv.environment import HealthTriageEnv
 
 
-TASK_PREFIX = "medical_triage"
+TASK_NAME = "medical_triage"
+BENCHMARK_NAME = "medical_triage"
 DEFAULT_MODEL = "gpt-4.1-mini"
+DEFAULT_API_BASE_URL = "https://api.openai.com/v1"
 API_TIMEOUT = 10
 MAX_STEPS = 3
-SCORE_SCALE = 4.0
-SCORE_FLOOR = 0.01
-SCORE_CEILING = 0.99
 
 
-def _get_env(name, fallback=None):
+def _read_env(name, default=None, required=False):
     value = os.getenv(name)
-    if value is not None and value.strip():
-        return value
-    return fallback
+    if value is None or not value.strip():
+        if required:
+            raise ValueError(f"{name} environment variable is required")
+        return default
+    return value.strip()
 
 
-def _slugify(value):
-    slug = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
-    return slug or "task"
+def _single_line(value):
+    return " ".join(str(value).split())
+
+
+def _bool_text(value):
+    return "true" if value else "false"
+
+
+def _error_text(value):
+    if value is None or value == "":
+        return "null"
+    return _single_line(value)
+
+
+def _rewards_text(values):
+    return ",".join(f"{value:.2f}" for value in values)
 
 
 def build_llm_client():
-    """
-    Build the OpenAI client using the injected OpenEnv proxy variables.
-
-    The evaluator injects API_BASE_URL and API_KEY. We keep legacy fallbacks
-    for local runs, but the preferred path is the injected proxy.
-    """
-    api_base_url = _get_env("API_BASE_URL", _get_env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
-    api_key = _get_env("API_KEY", _get_env("OPENAI_API_KEY"))
-    model_name = _get_env("MODEL_NAME", DEFAULT_MODEL)
-
-    if not api_key:
-        return None, model_name
-
-    client = OpenAI(base_url=api_base_url, api_key=api_key, timeout=API_TIMEOUT)
-    return client, model_name
-
-
-def normalize_score(total_reward, step_index):
-    # Keep the reported score strictly inside (0, 1) even after 2-decimal rounding.
-    average_reward = total_reward / step_index if step_index else 0.0
-    score = 0.5 + math.atan(average_reward / SCORE_SCALE) / math.pi
-    return max(SCORE_FLOOR, min(SCORE_CEILING, score))
+    api_base_url = _read_env("API_BASE_URL", DEFAULT_API_BASE_URL)
+    hf_token = _read_env("HF_TOKEN", required=True)
+    client = OpenAI(base_url=api_base_url, api_key=hf_token, timeout=API_TIMEOUT)
+    return client
 
 
 def choose_action(client, model_name, observation, actions, fallback_action):
@@ -59,10 +56,6 @@ def choose_action(client, model_name, observation, actions, fallback_action):
         return None
 
     safe_fallback = fallback_action if fallback_action in actions else actions[0]
-
-    if client is None:
-        return safe_fallback
-
     prompt = (
         "You are a health triage assistant.\n"
         "Choose exactly one action from the allowed list.\n\n"
@@ -80,12 +73,12 @@ def choose_action(client, model_name, observation, actions, fallback_action):
             ],
             temperature=0,
         )
-
-        content = response.choices[0].message.content.strip() if response.choices else ""
-        if content in actions:
-            return content
+        content = response.choices[0].message.content if response.choices else ""
+        cleaned = _single_line(content or "")
+        if cleaned in actions:
+            return cleaned
         for action in actions:
-            if action in content:
+            if action in cleaned:
                 return action
     except Exception:
         return safe_fallback
@@ -93,48 +86,77 @@ def choose_action(client, model_name, observation, actions, fallback_action):
     return safe_fallback
 
 
-def run_task(task_name, scenario_name, client, model_name):
-    env = HealthTriageEnv(scenario_name)
-    observation = env.reset()
-    actions = env.available_actions()
-    step_index = 0
-    done = False
-    total_reward = 0.0
+def close_env(env):
+    close = getattr(env, "close", None)
+    if callable(close):
+        close()
 
-    print(f"[START] task={task_name}", flush=True)
+
+def run_episode():
+    model_name = _read_env("MODEL_NAME", DEFAULT_MODEL)
+    env = HealthTriageEnv(seed=0)
+    rewards = []
+    errors = []
+    done = False
+    fatal_error = None
+
+    print(
+        f"[START] task={TASK_NAME} env={BENCHMARK_NAME} model={_single_line(model_name)}",
+        flush=True,
+    )
 
     try:
-        while not done and step_index < MAX_STEPS:
+        client = build_llm_client()
+        observation = env.reset()
+
+        for step_number in range(1, MAX_STEPS + 1):
             fallback_action = env.expert_policy(observation)
-            action = choose_action(client, model_name, observation, actions, fallback_action)
-            if action is None:
+            action = choose_action(client, model_name, observation, env.available_actions(), fallback_action)
+
+            reward = 0.0
+            step_done = False
+            step_error = None
+            step_exception = None
+
+            try:
+                observation, reward, step_done, info = env.step(action)
+                if isinstance(info, dict):
+                    step_error = info.get("error")
+            except Exception as exc:
+                step_exception = exc
+                step_error = str(exc)
+
+            rewards.append(reward)
+            errors.append(step_error)
+            print(
+                f"[STEP] step={step_number} action={_single_line(action)} reward={reward:.2f} "
+                f"done={_bool_text(step_done)} error={_error_text(step_error)}",
+                flush=True,
+            )
+
+            if step_exception is not None:
+                fatal_error = step_exception
                 break
 
-            observation, reward, done, _info = env.step(action)
-            total_reward += reward
-            step_index += 1
+            done = step_done
+            if done:
+                break
+    except Exception as exc:
+        fatal_error = exc
+    finally:
+        close_env(env)
+        success = done and fatal_error is None and all(error is None for error in errors)
+        print(
+            f"[END] success={_bool_text(success)} steps={len(rewards)} rewards={_rewards_text(rewards)}",
+            flush=True,
+        )
 
-            print(f"[STEP] step={step_index} action={action} reward={reward:.2f}", flush=True)
-    except Exception:
-        print(f"[STEP] step={step_index + 1} action=ERROR reward=0.00", flush=True)
-
-    final_score = normalize_score(total_reward, step_index)
-    print(f"[END] task={task_name} score={final_score:.2f} steps={step_index}", flush=True)
-
-
-def build_task_schedule():
-    tasks = []
-    for scenario in load_scenarios():
-        scenario_name = scenario["name"]
-        task_name = f"{TASK_PREFIX}_{_slugify(scenario_name)}"
-        tasks.append((task_name, scenario_name))
-    return tasks
+    if fatal_error is not None:
+        raise fatal_error
 
 
 def main():
-    client, model_name = build_llm_client()
-    for task_name, scenario_name in build_task_schedule():
-        run_task(task_name, scenario_name, client, model_name)
+    run_episode()
 
 
 if __name__ == "__main__":

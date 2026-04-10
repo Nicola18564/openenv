@@ -163,25 +163,25 @@ python inference.py
 
 This will:
 1. Initialize a local triage environment
-2. Reset with a random scenario
+2. Emit a single validator-compliant episode
 3. Execute up to 3 steps with action selection
 4. Output structured blocks for validation:
    ```
-   [START] task=medical_triage
-   [STEP] step=1 reward=1.80
-   [STEP] step=2 reward=-0.20
-   [END] task=medical_triage score=0.47 steps=3
+   [START] task=medical_triage env=medical_triage model=gpt-4.1-mini
+   [STEP] step=1 action=ASK_FOLLOWUP reward=0.00 done=false error=null
+   [STEP] step=2 action=REQUEST_VITALS reward=0.00 done=false error=null
+   [END] success=true steps=2 rewards=0.00,0.00
    ```
 
 ### LLM Integration
 
-The inference script supports OpenAI API integration:
+The inference script uses the OpenAI client with an HF token:
 
 ```bash
-OPENAI_API_KEY="sk-..." python inference.py
+HF_TOKEN="hf_..." API_BASE_URL="https://api.openai.com/v1" MODEL_NAME="gpt-4.1-mini" python inference.py
 ```
 
-Without an API key, it gracefully falls back to deterministic policies.
+`HF_TOKEN` is required.
 
 ### Benchmark Mode
 
@@ -235,8 +235,9 @@ The system includes diverse patient scenarios:
 
 ```bash
 # LLM Configuration
-OPENAI_API_KEY        # Your OpenAI API key
-OPENAI_BASE_URL       # Default: https://api.openai.com/v1
+HF_TOKEN              # Required Hugging Face token
+API_BASE_URL          # Default: https://api.openai.com/v1
+MODEL_NAME            # Default: gpt-4.1-mini
 API_TIMEOUT           # API call timeout in seconds (default: 10)
 
 # Server Configuration

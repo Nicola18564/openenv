@@ -186,6 +186,9 @@ class HealthTriageEnvironment:
             "urgency_breakdown": urgency_breakdown,
         }
 
+    def close(self):
+        return None
+
     def _build_state(self):
         assessment = assess_case(self.scenario)
         scenario_name = self.scenario.get("name", self.scenario.get("title", "unknown"))
