@@ -79,6 +79,19 @@ python app.py
 
 Then visit: `http://localhost:7860`
 
+### OpenEnv Native Server
+
+If you want the reference-style OpenEnv interface instead of the Gradio UI, run:
+
+```bash
+uvicorn server.app:app --host 0.0.0.0 --port 7860
+```
+
+That entry point powers `openenv.yaml` and uses the OpenEnv wrapper in `server/triage_environment.py` plus the schema models in `server/models.py`.
+
+The local `app.py` UI is still available for interactive debugging and visual exploration.
+OpenEnv responses follow the reference server shape: top-level `reward` and `done`, with the current observation nested under `observation`.
+
 ### Docker Deployment
 
 ```bash

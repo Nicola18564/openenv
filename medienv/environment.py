@@ -202,6 +202,8 @@ class HealthTriageEnvironment:
             "duration_days": self.scenario.get("duration_days", 0),
             "age_group": self.scenario.get("age_group", "adult"),
             "severity": self.scenario.get("severity", "low"),
+            "fall_flag": self.scenario.get("fall_flag", False),
+            "epidemic_flag": self.scenario.get("epidemic_flag", False),
             "rural_access": self.scenario.get("rural_access", False),
             "mobility_issues": self.scenario.get("mobility_issues", False),
             "language_barrier": self.scenario.get("language_barrier", False),

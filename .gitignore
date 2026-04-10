@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+*.pyc.*
+session_logs.json
+session_logs_test.json
+debug.log
