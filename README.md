@@ -101,7 +101,7 @@ python -m unittest test_environment.py
 - `app.py` - Gradio + FastAPI interface
 - `server/app.py` - OpenEnv-native server entry
 - `server/models.py` - OpenEnv schema models
-- `server/` - OpenEnv wrapper around the placement engine
+- `server/environment.py` - OpenEnv wrapper around the placement engine
 - `medienv/environment.py` - Core placement environment
 - `medienv/grader.py` - Reward and grading logic
 - `medienv/tasks.py` - Scenario definitions and action catalog

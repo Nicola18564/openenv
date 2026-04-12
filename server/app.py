@@ -16,8 +16,8 @@ os.environ.setdefault("ENABLE_WEB_INTERFACE", "true")
 
 from openenv.core.env_server.http_server import create_app
 
+from server.environment import PlacementIntelligenceEnvironment
 from server.models import PlacementAction, PlacementObservation
-from server.triage_environment import PlacementIntelligenceEnvironment
 
 
 app = create_app(
