@@ -1,5 +1,5 @@
 spec_version: 1
-name: mediassist-triage-arena
+name: placement-intelligence-arena
 type: space
 runtime: fastapi
 app: server.app:app

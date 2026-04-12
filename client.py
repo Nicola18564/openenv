@@ -1,6 +1,8 @@
+"""Local client for the placement-intelligence environment."""
+
 from dataclasses import dataclass
 
-from medienv.environment import HealthTriageEnv, load_scenarios
+from medienv.environment import PlacementIntelligenceEnv, load_scenarios
 
 
 SCENARIOS = {item["name"]: item for item in load_scenarios()}
@@ -14,12 +16,12 @@ class StepResult:
     info: dict
 
 
-class MediAssistClient:
-    """Lightweight local client for interacting with the triage environment."""
+class PlacementIntelligenceClient:
+    """Lightweight local client for interacting with the placement environment."""
 
     def __init__(self, scenario_name=None, seed=None):
         self.scenario_name = scenario_name or next(iter(SCENARIOS))
-        self.env = HealthTriageEnv(SCENARIOS[self.scenario_name], seed=seed)
+        self.env = PlacementIntelligenceEnv(SCENARIOS[self.scenario_name], seed=seed)
         self._last_state = None
 
     @staticmethod
@@ -34,7 +36,7 @@ class MediAssistClient:
             if scenario_name not in SCENARIOS:
                 raise ValueError(f"Unknown scenario: {scenario_name}")
             self.scenario_name = scenario_name
-            self.env = HealthTriageEnv(SCENARIOS[self.scenario_name])
+            self.env = PlacementIntelligenceEnv(SCENARIOS[self.scenario_name])
         self._last_state = self.env.reset()
         return self._last_state
 
@@ -58,8 +60,11 @@ class MediAssistClient:
         return None
 
 
+MediAssistClient = PlacementIntelligenceClient
+
+
 if __name__ == "__main__":
-    client = MediAssistClient()
+    client = PlacementIntelligenceClient()
     state = client.reset()
     print("Scenario:", client.scenario_name)
     print("Initial state:", state)

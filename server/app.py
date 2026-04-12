@@ -1,4 +1,4 @@
-"""OpenEnv-native FastAPI application for the MediAssist triage environment."""
+"""OpenEnv-native FastAPI application for the placement-readiness environment."""
 
 from __future__ import annotations
 
@@ -16,15 +16,15 @@ os.environ.setdefault("ENABLE_WEB_INTERFACE", "true")
 
 from openenv.core.env_server.http_server import create_app
 
-from server.models import MediAssistAction, MediAssistObservation
-from server.triage_environment import MediAssistTriageEnvironment
+from server.models import PlacementAction, PlacementObservation
+from server.triage_environment import PlacementIntelligenceEnvironment
 
 
 app = create_app(
-    MediAssistTriageEnvironment,
-    MediAssistAction,
-    MediAssistObservation,
-    env_name="mediassist-triage-arena",
+    PlacementIntelligenceEnvironment,
+    PlacementAction,
+    PlacementObservation,
+    env_name="placement-intelligence-environment",
     max_concurrent_envs=1,
 )
 

@@ -4,108 +4,109 @@ from pathlib import Path
 
 import app
 from fastapi.testclient import TestClient
-from medienv.environment import HealthTriageEnv, load_scenarios
+from medienv.environment import PlacementIntelligenceEnv, load_scenarios
 from server.app import app as openenv_app
 
 
-class HealthTriageEnvironmentTests(unittest.TestCase):
+class PlacementIntelligenceEnvironmentTests(unittest.TestCase):
     def test_load_scenarios(self):
         scenarios = load_scenarios()
-        self.assertGreaterEqual(len(scenarios), 3)
-        self.assertIn("severity", scenarios[0])
+        self.assertGreaterEqual(len(scenarios), 5)
+        self.assertIn("target_company", scenarios[0])
+        self.assertIn("proof_targets", scenarios[0])
+        self.assertEqual(scenarios[0]["correct_action"], "APPLY_JOB")
 
     def test_reset_returns_state(self):
-        env = HealthTriageEnv(seed=1)
+        env = PlacementIntelligenceEnv(seed=1)
         state = env.reset()
-        self.assertIn("symptoms", state)
-        self.assertIn("severity", state)
-        self.assertIn("risk_score", state)
-        self.assertIn("urgency", state)
+        self.assertIn("target_company", state)
+        self.assertIn("role", state)
+        self.assertIn("readiness_score", state)
+        self.assertIn("proof_ready", state)
 
     def test_invalid_action_penalized(self):
-        env = HealthTriageEnv(seed=1)
+        env = PlacementIntelligenceEnv(seed=1)
         env.reset()
         _, reward, done, info = env.step("BAD_ACTION")
-        self.assertEqual(reward, -2.0)
+        self.assertEqual(reward, -3.0)
         self.assertFalse(done)
         self.assertIn("error", info)
 
     def test_import_name_works(self):
-        env = HealthTriageEnv(seed=1)
+        env = PlacementIntelligenceEnv(seed=1)
         state = env.reset()
         self.assertIn("done", state)
 
     def test_expert_policy_returns_known_action(self):
-        env = HealthTriageEnv(seed=1)
+        env = PlacementIntelligenceEnv(seed=1)
         state = env.reset()
         self.assertIn(env.expert_policy(state), env.available_actions())
 
-    def test_emergency_case_rewards_safe_escalation(self):
+    def test_apply_job_rewards_readiness(self):
         scenarios = load_scenarios()
-        emergency_case = next(item for item in scenarios if item["name"] == "Fall emergency")
-        env = HealthTriageEnv(emergency_case)
+        scenario = next(item for item in scenarios if item["name"] == "AI Startup Hiring Sprint")
+        env = PlacementIntelligenceEnv(scenario)
         env.reset()
-        state, reward, done, info = env.step("ESCALATE_EMERGENCY")
+        env.skill_levels = {"python": 88, "dsa": 82, "ai": 90, "backend": 78, "web": 75}
+        env.projects = ["AI project", "Backend project"]
+        env.company_analysis_score = 80
+        env.testing_score = 88
+        env.progress_score = 84
+        env.brand_score = 82
+        env.resume_score = 86
+        env.interview_score = 84
+        state, reward, done, info = env.step("APPLY_JOB")
         self.assertTrue(done)
         self.assertGreater(reward, 0)
-        self.assertEqual(info["resolution_quality"], "safe_final")
-        self.assertEqual(state["total_reward"], reward)
-
-    def test_support_message_is_useful_for_low_risk_distress(self):
-        scenarios = load_scenarios()
-        support_case = next(item for item in scenarios if item["name"] == "Panic with palpitations")
-        env = HealthTriageEnv(support_case)
-        env.reset()
-        _, reward, done, info = env.step("PROVIDE_SUPPORT_MESSAGE")
-        self.assertFalse(done)
-        self.assertGreater(reward, 0)
-        self.assertIn("empathy", info["reward_breakdown"])
+        self.assertEqual(info["resolution_quality"], "submission_ready")
+        self.assertTrue(state["proof_ready"])
 
     def test_benchmark_returns_expected_fields(self):
-        env = HealthTriageEnv(seed=1)
+        env = PlacementIntelligenceEnv(seed=1)
         summary = env.benchmark(episodes=5)
         self.assertIn("average_reward", summary)
-        self.assertIn("successful_triage_rate", summary)
-        self.assertIn("urgency_breakdown", summary)
+        self.assertIn("successful_readiness_rate", summary)
+        self.assertIn("proof_ready_rate", summary)
+        self.assertIn("application_rate", summary)
 
     def test_openenv_reset_endpoint(self):
         client = TestClient(app.app)
-        response = client.post("/reset", json={"scenario_name": "Mild headache"})
+        response = client.post("/reset", json={"scenario_name": "AI Startup Hiring Sprint"})
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIn("observation", payload)
         self.assertIn("available_actions", payload)
-        self.assertEqual(payload["scenario"], "Mild headache")
+        self.assertEqual(payload["scenario"], "AI Startup Hiring Sprint")
 
     def test_openenv_step_endpoint(self):
         client = TestClient(app.app)
-        client.post("/reset", json={"scenario_name": "Fall emergency"})
-        response = client.post("/step", json={"action": "ESCALATE_EMERGENCY"})
+        client.post("/reset", json={"scenario_name": "AI Startup Hiring Sprint"})
+        response = client.post("/step", json={"action": "ANALYZE_COMPANY"})
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIn("reward", payload)
         self.assertIn("info", payload)
-        self.assertTrue(payload["done"])
+        self.assertFalse(payload["done"])
 
     def test_openenv_native_reset_endpoint(self):
         client = TestClient(openenv_app)
-        response = client.post("/reset", json={"scenario_name": "Mild headache"})
+        response = client.post("/reset", json={"scenario_name": "AI Startup Hiring Sprint"})
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIn("observation", payload)
         self.assertIn("reward", payload)
         self.assertIn("done", payload)
-        self.assertEqual(payload["observation"]["scenario_name"], "Mild headache")
+        self.assertEqual(payload["observation"]["scenario_name"], "AI Startup Hiring Sprint")
 
     def test_openenv_native_step_endpoint(self):
         client = TestClient(openenv_app)
-        client.post("/reset", json={"scenario_name": "Fall emergency"})
-        response = client.post("/step", json={"action": {"action": "ASK_FOLLOWUP"}})
+        client.post("/reset", json={"scenario_name": "AI Startup Hiring Sprint"})
+        response = client.post("/step", json={"action": {"action": "ANALYZE_COMPANY"}})
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIn("observation", payload)
         self.assertIn("reward", payload)
-        self.assertGreater(payload["reward"], 0)
+        self.assertGreaterEqual(payload["reward"], 0)
         self.assertFalse(payload["done"])
 
     def test_openenv_root_route(self):
@@ -123,18 +124,16 @@ class HealthTriageEnvironmentTests(unittest.TestCase):
             state = {
                 "done": False,
                 "step_count": 1,
-                "symptoms": "test",
-                "age_group": "adult",
-                "severity": "low",
-                "rural_access": False,
-                "mental_state": "neutral",
-                "fall_flag": False,
-                "epidemic_flag": False,
-                "risk_score": 18,
-                "urgency": "low",
+                "target_company": "test",
+                "role": "engineer",
+                "stage": "proof",
+                "focus_modules": [],
+                "skill_average": 60,
+                "readiness_score": 72,
+                "readiness_state": "almost_ready",
+                "proof_ready": False,
                 "total_reward": 0.0,
-                "context_collected": False,
-                "support_provided": False,
+                "applications_submitted": 0,
                 "history": [],
             }
             app.save_session_log("Mild headache", state, {"ok": True}, 1.0)

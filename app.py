@@ -12,7 +12,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from medienv.environment import HealthTriageEnv, load_scenarios
+from medienv.environment import PlacementIntelligenceEnv, load_scenarios
 
 
 sys.dont_write_bytecode = True
@@ -32,21 +32,27 @@ class StepRequest(BaseModel):
 
 def pretty_state(state):
     return f"""
-**Case:** {state.get('title', state.get('case_id', 'unknown'))}
+**Scenario:** {state.get('title', state.get('case_id', 'unknown'))}
 
-**Symptoms:** {state.get('symptoms')}
+**Target company:** {state.get('target_company')}
 
-**Age group:** {state.get('age_group')}
+**Role:** {state.get('role')}
 
-**Severity:** {state.get('severity')}
+**Stage:** {state.get('stage')}
 
-**Urgency:** {state.get('urgency')}
+**Focus modules:** {state.get('focus_modules')}
 
-**Risk score:** {state.get('risk_score')}
+**Skill average:** {state.get('skill_average')}
 
-**Rural access:** {state.get('rural_access')}
+**Readiness score:** {state.get('readiness_score')}
 
-**Mental state:** {state.get('mental_state')}
+**Readiness state:** {state.get('readiness_state')}
+
+**Proof ready:** {state.get('proof_ready')}
+
+**Projects:** {state.get('projects')}
+
+**Applications submitted:** {state.get('applications_submitted')}
 
 **Step count:** {state.get('step_count')}
 
@@ -55,7 +61,7 @@ def pretty_state(state):
 
 
 def available_actions():
-    return list(HealthTriageEnv.ACTIONS)
+    return list(PlacementIntelligenceEnv.ACTIONS)
 
 
 def save_session_log(scenario_name, state, info, reward):
@@ -85,7 +91,7 @@ def save_session_log(scenario_name, state, info, reward):
 class OpenEnvSession:
     def __init__(self, scenario_name=None):
         self.scenario_name = scenario_name or next(iter(SCENARIOS))
-        self.env = HealthTriageEnv(SCENARIOS[self.scenario_name])
+        self.env = PlacementIntelligenceEnv(SCENARIOS[self.scenario_name])
         self._last_observation = self.env.reset()
 
     def reset(self, scenario_name=None):
@@ -93,7 +99,7 @@ class OpenEnvSession:
             if scenario_name not in SCENARIOS:
                 raise ValueError(f"Unknown scenario: {scenario_name}")
             self.scenario_name = scenario_name
-            self.env = HealthTriageEnv(SCENARIOS[self.scenario_name])
+            self.env = PlacementIntelligenceEnv(SCENARIOS[self.scenario_name])
         self._last_observation = self.env.reset()
         return self._last_observation
 
@@ -112,7 +118,7 @@ class OpenEnvSession:
 session = OpenEnvSession()
 
 
-app = FastAPI(title="MediAssist Triage Arena")
+app = FastAPI(title="Placement Intelligence Arena")
 
 
 @app.get("/health")
@@ -179,8 +185,8 @@ def ui_step(action):
 
 
 with gr.Blocks() as demo:
-    gr.Markdown("# MediAssist Triage System")
-    gr.Markdown("Interactive OpenEnv-compatible triage workflow with structured feedback.")
+    gr.Markdown("# Placement Intelligence Arena")
+    gr.Markdown("Interactive OpenEnv-compatible placement-readiness workflow with structured feedback.")
 
     scenario_dropdown = gr.Dropdown(
         choices=list(SCENARIOS.keys()),

@@ -6,15 +6,15 @@ sys.dont_write_bytecode = True
 
 from openai import OpenAI
 
-from medienv.environment import HealthTriageEnv
+from medienv.environment import PlacementIntelligenceEnv
 
 
-TASK_NAME = "medical_triage"
-BENCHMARK_NAME = "medical_triage"
+TASK_NAME = "placement_readiness"
+BENCHMARK_NAME = "placement_readiness"
 DEFAULT_MODEL = "gpt-4.1-mini"
 DEFAULT_API_BASE_URL = "https://api.openai.com/v1"
 API_TIMEOUT = 10
-MAX_STEPS = 3
+MAX_STEPS = 12
 
 
 def _read_env(name, default=None, required=False):
@@ -62,7 +62,7 @@ def choose_action(client, model_name, observation, actions, fallback_action):
 
     safe_fallback = fallback_action if fallback_action in actions else actions[0]
     prompt = (
-        "You are a health triage assistant.\n"
+        "You are a placement-readiness assistant.\n"
         "Choose exactly one action from the allowed list.\n\n"
         f"Observation:\n{json.dumps(observation, ensure_ascii=False)}\n\n"
         f"Allowed actions:\n{actions}\n\n"
@@ -73,7 +73,7 @@ def choose_action(client, model_name, observation, actions, fallback_action):
         response = client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "Choose the safest valid triage action."},
+                {"role": "system", "content": "Choose the safest valid placement action."},
                 {"role": "user", "content": prompt},
             ],
             temperature=0,
@@ -99,7 +99,7 @@ def close_env(env):
 
 def run_episode():
     model_name = _read_env("MODEL_NAME", DEFAULT_MODEL)
-    env = HealthTriageEnv(seed=0)
+    env = PlacementIntelligenceEnv(seed=0)
     rewards = []
     errors = []
     done = False
