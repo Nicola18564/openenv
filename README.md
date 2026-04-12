@@ -70,6 +70,16 @@ python app.py
 uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
 
+## Tasks and Difficulty
+
+This environment includes three primary agent evaluation tasks:
+
+- `placement_readiness_startup` — easy: align skills and build an AI portfolio.
+- `placement_readiness_service` — medium: strengthen backend and testing proof.
+- `placement_readiness_internship` — hard: build a full-stack portfolio and polish interview readiness.
+
+Each task has a deterministic scorer and progress-based reward shaping.
+
 ## Benchmark
 
 ```bash
@@ -79,15 +89,38 @@ python baseline/run_baseline.py
 ## Inference
 
 ```bash
+OPENAI_API_KEY="your_key"
+MODEL_NAME="gpt-4.1-mini"
+API_BASE_URL="https://api.openai.com/v1"
 python inference.py
 ```
 
-The inference script prints validator-friendly structured blocks:
+The inference script uses the OpenAI client and prints validator-friendly structured blocks:
 
 ```text
-[START]
-[STEP]
-[END]
+[START] task=...
+[STEP] step=... reward=...
+[END] task=... score=... steps=...
+```
+
+## Deployment
+
+- Build the container locally:
+
+```bash
+docker build -t openenv-test .
+```
+
+- Run the app in Docker:
+
+```bash
+docker run -p 7860:7860 openenv-test
+```
+
+- Validate the environment with OpenEnv CLI:
+
+```bash
+python -m openenv.cli validate .
 ```
 
 ## Testing

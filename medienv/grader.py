@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Dict, Iterable
 
 TERMINAL_ACTIONS = {
@@ -42,6 +43,11 @@ def _skill_average(case: Dict) -> float:
     if not skills:
         return 0.0
     return sum(skills.values()) / max(len(skills), 1)
+
+
+def _normalize_reward(raw_value: float) -> float:
+    normalized = 1.0 / (1.0 + math.exp(-raw_value / 8.0))
+    return min(0.999, max(0.001, normalized))
 
 
 def assess_case(case: Dict) -> Dict:
@@ -274,11 +280,12 @@ def score_action(case: Dict, action: str) -> Dict:
     if action == "PRACTICE_INTERVIEW":
         rationale.append("Interview drills improve communication and confidence.")
 
-    reward = sum(breakdown.values())
+    raw_reward = sum(breakdown.values())
     if action == recommended and action != "APPLY_JOB":
-        reward = max(reward, 6)
+        raw_reward = max(raw_reward, 6)
     if action == recommended and action == "APPLY_JOB" and proof_ready:
-        reward = max(reward, 12)
+        raw_reward = max(raw_reward, 12)
+    reward = _normalize_reward(raw_reward)
 
     care_plan = {
         "ANALYZE_COMPANY": "research_market",

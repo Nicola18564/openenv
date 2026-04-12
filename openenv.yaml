@@ -3,4 +3,4 @@ name: placement-intelligence-arena
 type: space
 runtime: fastapi
 app: server.app:app
-port: 8004
+port: 7860
