@@ -58,11 +58,6 @@ class PlacementIntelligenceClient:
 
     def close(self):
         return None
-
-
-MediAssistClient = PlacementIntelligenceClient
-
-
 if __name__ == "__main__":
     client = PlacementIntelligenceClient()
     state = client.reset()

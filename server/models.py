@@ -107,18 +107,8 @@ class PlacementState(State):
     last_action: Optional[str] = Field(default=None, description="Most recent action token.")
     last_reward: Optional[float] = Field(default=None, description="Reward from the most recent step.")
     done: bool = Field(default=False, description="Whether the episode has terminated.")
-
-
-MediAssistAction = PlacementAction
-MediAssistObservation = PlacementObservation
-MediAssistState = PlacementState
-
-
 __all__ = [
     "PlacementAction",
     "PlacementObservation",
     "PlacementState",
-    "MediAssistAction",
-    "MediAssistObservation",
-    "MediAssistState",
 ]

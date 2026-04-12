@@ -225,9 +225,4 @@ class PlacementIntelligenceEnvironment(
         close = getattr(self._engine, "close", None)
         if callable(close):
             close()
-
-
-MediAssistTriageEnvironment = PlacementIntelligenceEnvironment
-
-
-__all__ = ["PlacementIntelligenceEnvironment", "MediAssistTriageEnvironment"]
+__all__ = ["PlacementIntelligenceEnvironment"]
