@@ -472,7 +472,6 @@ class PlacementIntelligenceEnv:
             "episodes": episodes,
             "average_reward": round(total_reward / episodes, 2) if episodes else 0.0,
             "successful_readiness_rate": round((solved / episodes) * 100, 1) if episodes else 0.0,
-            "successful_triage_rate": round((solved / episodes) * 100, 1) if episodes else 0.0,
             "proof_ready_rate": round((ready_count / episodes) * 100, 1) if episodes else 0.0,
             "application_rate": round((application_count / episodes) * 100, 1) if episodes else 0.0,
         }
@@ -480,6 +479,3 @@ class PlacementIntelligenceEnv:
     def close(self):
         return None
 
-
-HealthTriageEnv = PlacementIntelligenceEnv
-HealthTriageEnvironment = PlacementIntelligenceEnv
