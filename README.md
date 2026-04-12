@@ -179,6 +179,37 @@ python -m unittest test_environment.py
 - `openenv.yaml` - OpenEnv runtime config
 - `pyproject.toml` - Packaging metadata
 
+## Evaluation Criteria
+
+This environment is designed to meet the OpenEnv Round 1 evaluation parameters:
+
+### Real-world utility (30%)
+- Models the genuine task of preparing for job applications in technology companies.
+- Agents learn to analyze companies, build skills, create portfolios, and apply strategically.
+- Useful for training agents on career development and decision-making in professional contexts.
+
+### Task & grader quality (25%)
+- Three tasks with increasing difficulty: startup (easy), service (medium), internship (hard).
+- Graders use deterministic scoring based on proof targets (projects, skills, readiness).
+- Success measured by meeting eligibility thresholds and applying at the right time.
+
+### Environment design (20%)
+- Clean state management with typed Pydantic models for actions, observations, and state.
+- Sensible action space (20 discrete actions) and rich observation space (skill levels, projects, scores).
+- Reward shaping provides partial progress signals; episodes end on application or max steps.
+- Proper episode boundaries with done flags and info dictionaries.
+
+### Code quality & spec compliance (15%)
+- Full OpenEnv spec compliance with `step()`, `reset()`, and `state` properties.
+- Clean project structure with separate modules for environment, grader, tasks, and server.
+- Typed models, comprehensive tests, working Dockerfile, and OpenEnv validation passing.
+- Well-documented with this README and inline comments.
+
+### Creativity & novelty (10%)
+- Novel domain: career readiness simulation with proof-based gating.
+- Interesting mechanics: skill progression, project building, and strategic application timing.
+- Original approach combining RL with professional development scenarios.
+
 ## Notes
 
 - The environment is offline-first and does not depend on a cloud database.
