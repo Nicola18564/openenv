@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import sys
 
@@ -9,8 +10,11 @@ from openai import OpenAI
 from medienv.environment import PlacementIntelligenceEnv
 
 
-TASK_NAME = "placement_readiness"
-BENCHMARK_NAME = "placement_readiness"
+TASKS = [
+    {"task": "placement_readiness_startup", "scenario": "AI Startup Hiring Sprint"},
+    {"task": "placement_readiness_service", "scenario": "Backend Service Role"},
+    {"task": "placement_readiness_internship", "scenario": "Full Stack Internship"},
+]
 DEFAULT_MODEL = "gpt-4.1-mini"
 DEFAULT_API_BASE_URL = "https://api.openai.com/v1"
 API_TIMEOUT = 10
@@ -30,18 +34,10 @@ def _single_line(value):
     return " ".join(str(value).split())
 
 
-def _bool_text(value):
-    return "true" if value else "false"
-
-
-def _error_text(value):
-    if value is None or value == "":
-        return "null"
-    return _single_line(value)
-
-
-def _rewards_text(values):
-    return ",".join(f"{value:.2f}" for value in values)
+def _normalize_score(value: float) -> float:
+    normalized = 1.0 / (1.0 + math.exp(-value / 10.0))
+    scaled = 0.01 + 0.98 * normalized
+    return min(0.999, max(0.001, scaled))
 
 
 def build_llm_client():
@@ -61,6 +57,9 @@ def choose_action(client, model_name, observation, actions, fallback_action):
         return None
 
     safe_fallback = fallback_action if fallback_action in actions else actions[0]
+    if client is None:
+        return safe_fallback
+
     prompt = (
         "You are a placement-readiness assistant.\n"
         "Choose exactly one action from the allowed list.\n\n"
@@ -86,7 +85,7 @@ def choose_action(client, model_name, observation, actions, fallback_action):
             if action in cleaned:
                 return action
     except Exception:
-        return safe_fallback
+        pass
 
     return safe_fallback
 
@@ -97,7 +96,7 @@ def close_env(env):
         close()
 
 
-def run_episode():
+def run_task(task_name: str, scenario_name: str):
     model_name = _read_env("MODEL_NAME", DEFAULT_MODEL)
     env = PlacementIntelligenceEnv(seed=0)
     rewards = []
@@ -105,21 +104,17 @@ def run_episode():
     done = False
     fatal_error = None
 
-    print(
-        f"[START] task={TASK_NAME}",
-        flush=True,
-    )
+    print(f"[START] task={task_name}", flush=True)
 
     try:
         client = build_llm_client()
-        observation = env.reset()
+        observation = env.reset(scenario_name)
 
         for step_number in range(1, MAX_STEPS + 1):
             fallback_action = env.expert_policy(observation)
             action = choose_action(client, model_name, observation, env.available_actions(), fallback_action)
 
             reward = 0.0
-            step_done = False
             step_error = None
             step_exception = None
 
@@ -130,13 +125,12 @@ def run_episode():
             except Exception as exc:
                 step_exception = exc
                 step_error = str(exc)
+                reward = 0.0
+                step_done = True
 
             rewards.append(reward)
             errors.append(step_error)
-            print(
-                f"[STEP] step={step_number} reward={reward:.2f}",
-                flush=True,
-            )
+            print(f"[STEP] step={step_number} reward={reward:.2f}", flush=True)
 
             if step_exception is not None:
                 fatal_error = step_exception
@@ -149,11 +143,19 @@ def run_episode():
         fatal_error = exc
     finally:
         close_env(env)
-        success = done and fatal_error is None and all(error is None for error in errors)
+        raw_score = sum(rewards) / max(len(rewards), 1)
+        normalized_score = _normalize_score(raw_score)
         print(
-            f"[END] task={TASK_NAME} score={sum(rewards) / max(len(rewards), 1):.2f} steps={len(rewards)}",
+            f"[END] task={task_name} score={normalized_score:.4f} steps={len(rewards)}",
             flush=True,
         )
+        if fatal_error is not None:
+            raise fatal_error
+
+
+def run_episode():
+    for task in TASKS:
+        run_task(task["task"], task["scenario"])
 
 
 def main():
