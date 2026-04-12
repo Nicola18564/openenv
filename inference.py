@@ -41,15 +41,10 @@ def _normalize_score(value: float) -> float:
 
 
 def build_llm_client():
-    try:
-        api_base_url = _read_env("API_BASE_URL", DEFAULT_API_BASE_URL)
-        api_key = _read_env("OPENAI_API_KEY")
-        if not api_key:
-            return None
-        client = OpenAI(base_url=api_base_url, api_key=api_key, timeout=API_TIMEOUT)
-        return client
-    except Exception:
-        return None
+    api_base_url = _read_env("API_BASE_URL", required=True)
+    api_key = _read_env("API_KEY", required=True)
+    client = OpenAI(base_url=api_base_url, api_key=api_key, timeout=API_TIMEOUT)
+    return client
 
 
 def choose_action(client, model_name, observation, actions, fallback_action):

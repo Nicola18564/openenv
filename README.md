@@ -115,7 +115,7 @@ python baseline/run_baseline.py
 ## Inference
 
 ```bash
-OPENAI_API_KEY="your_key"
+API_KEY="your_key"
 MODEL_NAME="gpt-4.1-mini"
 API_BASE_URL="https://api.openai.com/v1"
 python inference.py
