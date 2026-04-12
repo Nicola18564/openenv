@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from medienv.grader import assess_case, recommend_action, score_action
 from medienv.tasks import ACTION_CATALOG, SCENARIOS
@@ -131,7 +131,7 @@ class PlacementIntelligenceEnv:
         )
 
     def _pick_learning_action(self, current_state: Dict[str, Any]) -> Optional[str]:
-        skill_levels = current_state.get("skill_levels", {})
+        skill_levels = cast(Dict[str, int], current_state.get("skill_levels") or {})
         required_skills = [self._normalized_skill(skill) for skill in current_state.get("required_skills", [])]
         learned_actions = {action for action in self._history_actions(current_state) if action.startswith("LEARN_")}
         candidates: List[tuple[int, str]] = []
@@ -146,15 +146,17 @@ class PlacementIntelligenceEnv:
             if candidates[0][0] < 60:
                 return candidates[0][1]
 
-        company_type = current_state.get("company_type")
-        fallback = {
+        company_type = str(current_state.get("company_type") or "")
+        fallback_map: Dict[str, str] = {
             "product": "LEARN_AI",
             "service": "LEARN_BACKEND",
             "mixed": "LEARN_DSA",
             "exploratory": "LEARN_PYTHON",
-        }.get(company_type, "LEARN_DSA")
+        }
+        fallback = fallback_map.get(company_type, "LEARN_DSA")
+        fallback_skill = fallback.split("_", 1)[1].lower()
 
-        if fallback not in learned_actions and skill_levels.get(fallback.split("_", 1)[1].lower(), 0) < 60:
+        if fallback not in learned_actions and skill_levels.get(fallback_skill, 0) < 60:
             return fallback
         return None
 
@@ -478,4 +480,3 @@ class PlacementIntelligenceEnv:
 
     def close(self):
         return None
-
