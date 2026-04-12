@@ -101,12 +101,18 @@ def recommend_action(case: Dict) -> str:
     thresholds = _thresholds(case)
     history = [item.get("action") for item in case.get("history", []) if item.get("action")]
 
-    def action_taken(prefix: str) -> bool:
-        return any(action == prefix for action in history)
+    proof_ready = (
+        _project_count(case) >= thresholds["projects"]
+        and case.get("resume_score", 0) >= thresholds["resume"]
+        and case.get("interview_score", 0) >= thresholds["interview"]
+        and case.get("brand_score", 0) >= thresholds["branding"]
+        and case.get("testing_score", 0) >= thresholds["testing"]
+        and assessment["readiness_score"] >= thresholds["readiness"]
+    )
 
     if case.get("feedback_pending"):
         return "REVIEW_FAILURE"
-    if assessment["readiness_state"] == "ready":
+    if proof_ready:
         return "APPLY_JOB"
     if "ANALYZE_COMPANY" not in history:
         return "ANALYZE_COMPANY"
@@ -140,7 +146,9 @@ def recommend_action(case: Dict) -> str:
         return "REVIEW_FAILURE"
     if stage == "opportunity":
         return "EXPLORE_HACKATHON"
-    return "VALIDATE_READINESS" if not case.get("proof_ready") else "APPLY_JOB"
+    if assessment["readiness_state"] == "ready":
+        return "VALIDATE_READINESS"
+    return "VALIDATE_READINESS"
 
 
 def _module_breakdown(action: str, case: Dict, assessment: Dict, recommended: str) -> Dict[str, int]:
