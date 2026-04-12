@@ -12,6 +12,10 @@ pinned: false
 
 An explainable OpenEnv-compatible placement-readiness environment for structured self-growth, proof-based eligibility, and final job application decisions.
 
+## Problem Statement
+
+Simulate the human task of preparing for placement or job applications at technology companies. The agent must choose actions that improve skills, build proof artifacts, and meet readiness thresholds before applying.
+
 ## What It Does
 
 The environment simulates a realistic path from analysis to application:
@@ -57,6 +61,21 @@ It supports these modules:
 - `GATHER_CERTIFICATION`
 - `VALIDATE_READINESS`
 
+## Action Space
+
+The agent selects one token from the action catalog above on each step.
+
+## Observation / State Space
+
+Each observation includes:
+
+- scenario metadata: `scenario_name`, `scenario_id`, `title`, `summary`, `company_type`, `role`, `stage`
+- current progress: `skill_levels`, `projects`, `project_count`, `company_analysis_score`, `testing_score`, `progress_score`, `brand_score`, `resume_score`, `interview_score`, `application_score`, `proof_score`
+- readiness and proof status: `skill_average`, `company_match_score`, `readiness_score`, `readiness_state`, `proof_ready`
+- step tracking: `step_count`, `applications_submitted`, `feedback_pending`, `history`, `total_reward`
+- recommended actions: `recommended_action`, `correct_action`, `current_action_suggestion`
+- reward diagnostics: `reward_breakdown`, `resolution_quality`, `growth_plan`
+
 ## Run Locally
 
 ```bash
@@ -72,13 +91,20 @@ uvicorn server.app:app --host 0.0.0.0 --port 7860
 
 ## Tasks and Difficulty
 
-This environment includes three primary agent evaluation tasks:
+This environment includes three primary agent evaluation tasks used by the baseline runner:
 
-- `placement_readiness_startup` — easy: align skills and build an AI portfolio.
-- `placement_readiness_service` — medium: strengthen backend and testing proof.
-- `placement_readiness_internship` — hard: build a full-stack portfolio and polish interview readiness.
+- `placement_readiness_startup` — easy: align skills, analyze a product company, and build an AI-focused portfolio.
+- `placement_readiness_service` — medium: improve backend skills, build service-grade proof, and meet testing/readiness thresholds.
+- `placement_readiness_internship` — hard: develop a full-stack portfolio, strengthen branding and interview readiness, and satisfy proof gates.
 
-Each task has a deterministic scorer and progress-based reward shaping.
+Each task is scored by the environment grader and provides partial progress rewards along the trajectory.
+
+## Reward and Grading
+
+- The grader computes rewards per action and normalizes them into a bounded score range.
+- Partial progress is rewarded for learning, project building, testing, tracking, branding, resume improvement, and interview practice.
+- Unsafe or premature actions such as applying too early are penalized.
+- The baseline inference runner reports a normalized score for each task.
 
 ## Benchmark
 
@@ -121,6 +147,13 @@ docker run -p 7860:7860 openenv-test
 
 ```bash
 python -m openenv.cli validate .
+```
+
+- Push to Hugging Face using your `HF_TOKEN`:
+
+```bash
+export HF_TOKEN="your_token"
+python -m openenv.cli push .
 ```
 
 ## Testing
